@@ -28,6 +28,10 @@ function AppRoutes() {
         element={isVerified ? <Navigate to="/tracker" /> : <LandingPage />} 
       />
       <Route 
+        path="/ConnectUs" 
+        element={isVerified ? <Navigate to="/tracker" /> : <LandingPage />} 
+      />
+      <Route 
         path="/login" 
         element={isVerified ? <Navigate to="/tracker" /> : <Login />} 
       />

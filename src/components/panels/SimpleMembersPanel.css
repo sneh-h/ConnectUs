@@ -271,6 +271,20 @@
   display: inline-block;
 }
 
+.location-address {
+  font-size: 11px;
+  color: #4ecdc4;
+  font-weight: 500;
+  background: rgba(78, 205, 196, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

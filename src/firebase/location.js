@@ -9,6 +9,14 @@ export const updateUserLocation = (userId, location) => {
   });
 };
 
+export const updateGroupMemberLocation = (groupId, userId, location) => {
+  const memberRef = ref(realtimeDb, `groups/${groupId}/members/${userId}`);
+  return set(memberRef, {
+    ...location,
+    timestamp: Date.now()
+  });
+};
+
 export const subscribeToGroupLocations = (groupId, callback) => {
   const groupRef = ref(realtimeDb, `groups/${groupId}/members`);
   onValue(groupRef, callback);
@@ -89,4 +97,64 @@ export const checkGroupExists = async (groupCode) => {
 // Get group ID by code
 export const getGroupIdByCode = async (groupCode) => {
   return await checkGroupExists(groupCode);
+};
+
+// Member request functions
+export const sendMemberRequest = (groupId, request) => {
+  const requestsRef = ref(realtimeDb, `groups/${groupId}/memberRequests`);
+  return push(requestsRef, {
+    ...request,
+    timestamp: Date.now(),
+    status: 'pending'
+  });
+};
+
+export const subscribeToMemberRequests = (groupId, callback) => {
+  const requestsRef = ref(realtimeDb, `groups/${groupId}/memberRequests`);
+  onValue(requestsRef, callback);
+  return () => off(requestsRef, callback);
+};
+
+export const approveMemberRequest = (groupId, requestId, userId, userInfo) => {
+  const memberRef = ref(realtimeDb, `groups/${groupId}/members/${userId}`);
+  const requestRef = ref(realtimeDb, `groups/${groupId}/memberRequests/${requestId}`);
+  
+  // Add member to group
+  set(memberRef, {
+    ...userInfo,
+    role: 'member',
+    joinedAt: Date.now()
+  });
+  
+  // Update request status
+  return set(requestRef, null); // Remove the request
+};
+
+export const rejectMemberRequest = (groupId, requestId) => {
+  const requestRef = ref(realtimeDb, `groups/${groupId}/memberRequests/${requestId}`);
+  return set(requestRef, null); // Remove the request
+};
+
+// Notification functions
+export const sendNotification = (groupId, notification) => {
+  const notificationsRef = ref(realtimeDb, `groups/${groupId}/notifications`);
+  return push(notificationsRef, {
+    ...notification,
+    timestamp: Date.now()
+  });
+};
+
+export const subscribeToNotifications = (groupId, userId, callback) => {
+  const notificationsRef = ref(realtimeDb, `groups/${groupId}/notifications`);
+  onValue(notificationsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const notifications = Object.entries(snapshot.val())
+        .map(([id, notif]) => ({ id, ...notif }))
+        .filter(notif => !notif.userId || notif.userId === userId || notif.type === 'broadcast');
+      callback({ val: () => notifications });
+    } else {
+      callback({ val: () => [] });
+    }
+  });
+  return () => off(notificationsRef);
 };

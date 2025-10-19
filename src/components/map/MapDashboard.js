@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert } from '../../firebase/location';
+import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert, subscribeToMemberRequests, approveMemberRequest, rejectMemberRequest, sendNotification, subscribeToNotifications, updateGroupMemberLocation } from '../../firebase/location';
+import { ref, set } from 'firebase/database';
+import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
 import SimpleMembersPanel from '../panels/SimpleMembersPanel';
-import AdminPanel from '../panels/AdminPanel';
 import DemoMode from '../utils/DemoMode';
 import './MapDashboard.css';
 import 'leaflet/dist/leaflet.css';
@@ -26,6 +27,30 @@ const emergencyIcon = L.divIcon({
   iconSize: [40, 40],
   iconAnchor: [20, 20]
 });
+
+// Map controller component to handle map reference
+const MapController = ({ mapRef, setFollowMode }) => {
+  const map = useMap();
+  
+  React.useEffect(() => {
+    mapRef.current = map;
+    
+    // Add event listeners to detect manual map movement
+    const handleMapMove = () => {
+      setFollowMode(false);
+    };
+    
+    map.on('drag', handleMapMove);
+    map.on('zoom', handleMapMove);
+    
+    return () => {
+      map.off('drag', handleMapMove);
+      map.off('zoom', handleMapMove);
+    };
+  }, [map, mapRef, setFollowMode]);
+  
+  return null;
+};
 
 const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = false }) => {
   const { user } = useAuth();
@@ -62,6 +87,13 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [activeNotifications, setActiveNotifications] = useState([]);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState(new Set());
   const [notifiedRequests, setNotifiedRequests] = useState(new Set());
+  const [emergencyIntervals, setEmergencyIntervals] = useState({});
+  const [locationHistory, setLocationHistory] = useState([]);
+  const [batteryLevel, setBatteryLevel] = useState(100);
+  const [lowBatteryAlerts, setLowBatteryAlerts] = useState(new Set());
+  const [showMemberManagement, setShowMemberManagement] = useState(false);
+  const [followMode, setFollowMode] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const mapRef = useRef(null);
   const watchIdRef = useRef(null);
   const chatMessagesRef = useRef(null);
@@ -163,8 +195,45 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     let unsubscribeLocations = null;
     let unsubscribeMessages = null;
     let unsubscribeEmergency = null;
+    let unsubscribeRequests = null;
+    let unsubscribeNotifications = null;
 
     if (currentGroup && user) {
+      // Subscribe to member requests (admin only)
+      if (isAdmin) {
+        unsubscribeRequests = subscribeToMemberRequests(currentGroup, (snapshot) => {
+          if (snapshot.exists()) {
+            const requests = Object.entries(snapshot.val())
+              .map(([id, request]) => ({ id, ...request }))
+              .filter(request => request.status === 'pending');
+            setMemberRequests(requests);
+            
+            // Show notification for new requests
+            requests.forEach(request => {
+              const requestKey = `new_request_${request.id}`;
+              if (!notifiedRequests.has(requestKey)) {
+                showNotification('👥 New Member Request', `${request.name} wants to join the group`);
+                setNotifiedRequests(prev => new Set([...prev, requestKey]));
+              }
+            });
+          } else {
+            setMemberRequests([]);
+          }
+        });
+      }
+      
+      // Subscribe to notifications
+      unsubscribeNotifications = subscribeToNotifications(currentGroup, user.uid, (snapshot) => {
+        const notifications = snapshot.val();
+        if (notifications && Array.isArray(notifications)) {
+          notifications.forEach(notif => {
+            if (notif.timestamp > (Date.now() - 60000)) { // Only show recent notifications
+              showNotification(notif.title, notif.message);
+            }
+          });
+        }
+      });
+      
       // Subscribe to group locations
       unsubscribeLocations = subscribeToGroupLocations(currentGroup, (snapshot) => {
         if (snapshot.exists()) {
@@ -180,14 +249,23 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             if (!newColors[userId]) {
               newColors[userId] = colors[index % colors.length];
             }
+            
+            // Get address for each member if not already cached
+            if (member.lat && member.lng && !memberAddresses[userId]) {
+              getAddressFromCoords(member.lat, member.lng).then(address => {
+                if (address) {
+                  setMemberAddresses(prev => ({
+                    ...prev,
+                    [userId]: address
+                  }));
+                }
+              });
+            }
           });
           setMemberColors(newColors);
           setMemberLetters(newLetters);
           
-          // Auto-center map on user's location
-          if (myLocation && mapRef.current) {
-            mapRef.current.setView([myLocation.lat, myLocation.lng], 15);
-          }
+
           
           // Check for lagging members (admin only)
           if (isAdmin && myLocation) {
@@ -200,6 +278,32 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       unsubscribeMessages = subscribeToMessages(currentGroup, (snapshot) => {
         if (snapshot.exists()) {
           const msgs = Object.values(snapshot.val()).sort((a, b) => a.timestamp - b.timestamp);
+          const newMessages = msgs.filter(msg => 
+            msg.userId !== user.uid && 
+            msg.timestamp > (Date.now() - 60000) && 
+            !messages.some(existing => existing.timestamp === msg.timestamp)
+          );
+          
+          // Show browser notifications for new messages
+          newMessages.forEach(msg => {
+            if (Notification.permission === 'granted' && !showChat) {
+              const notification = new Notification('💬 New Message', {
+                body: `${msg.name}: ${msg.message}`,
+                icon: '/favicon.ico'
+              });
+              
+              notification.onclick = () => {
+                setShowChat(true);
+                notification.close();
+              };
+            }
+          });
+          
+          // Update unread count if chat is closed
+          if (!showChat && newMessages.length > 0) {
+            setUnreadMessages(prev => prev + newMessages.length);
+          }
+          
           setMessages(msgs);
         }
       });
@@ -226,41 +330,35 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           // Show notifications for new alerts (only if not acknowledged by current user)
           newAlerts.forEach(alert => {
             const isAlreadyAcknowledged = alert.acknowledged && alert.acknowledged[user.uid];
-            const alertKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`; // Group by minute
+            const alertKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`;
             
             if (!isAlreadyAcknowledged && !acknowledgedAlerts.has(alertKey)) {
               if (adminSettings.realNotifications && Notification.permission === 'granted') {
-                let notification;
-                if (alert.type === 'lagging') {
-                  notification = new Notification('📍 Member Lagging Behind', { 
-                    body: alert.message,
-                    tag: `lagging-${alert.userId}`, // Prevent duplicates
-                    requireInteraction: true
-                  });
+                // Start repetitive notifications for emergency alerts
+                if (alert.type === 'emergency' || !alert.type) {
+                  startRepetitiveEmergencyNotification(alert);
                 } else {
-                  notification = new Notification('🚨 Emergency Alert!', { 
-                    body: alert.message || 'A group member needs help!',
-                    tag: `emergency-${alert.userId}`,
+                  // Handle different alert types
+                  let title, body;
+                  if (alert.type === 'low_battery') {
+                    title = '🔋 Low Battery Alert';
+                    body = alert.message;
+                  } else {
+                    title = '📍 Member Lagging Behind';
+                    body = alert.message;
+                  }
+                  
+                  const notification = new Notification(title, { 
+                    body: body,
+                    tag: `${alert.type}-${alert.userId}`,
                     requireInteraction: true
                   });
+                  
+                  notification.onclick = () => {
+                    handleAcknowledgeAlert(alert, alert.id);
+                    notification.close();
+                  };
                 }
-                
-                // Handle user interaction with notification
-                notification.onclick = () => {
-                  // User clicked notification - acknowledge the alert
-                  handleAcknowledgeAlert(alert, alert.id);
-                  notification.close();
-                };
-                
-                notification.onclose = () => {
-                  // User closed notification - acknowledge the alert
-                  handleAcknowledgeAlert(alert, alert.id);
-                  setActiveNotifications(prev => prev.filter(n => n !== notification));
-                };
-                
-                // Store notification reference
-                alert.notificationRef = notification;
-                setActiveNotifications(prev => [...prev, notification]);
               }
               console.log('New alert added:', alert);
             }
@@ -282,8 +380,35 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               accuracy: position.coords.accuracy,
               timestamp: Date.now(),
               name: user.email.split('@')[0],
-              emergency: emergencyMode
+              emergency: emergencyMode,
+              battery: batteryLevel
             };
+            
+            // Add to location history
+            setLocationHistory(prev => {
+              const newHistory = [...prev, {
+                lat: location.lat,
+                lng: location.lng,
+                timestamp: location.timestamp,
+                address: myAddress
+              }].slice(-50); // Keep last 50 locations
+              return newHistory;
+            });
+            
+            // Check for low battery
+            if (batteryLevel <= 20 && !lowBatteryAlerts.has(user.uid)) {
+              sendEmergencyAlert(currentGroup, {
+                type: 'low_battery',
+                userId: user.uid,
+                name: user.email.split('@')[0],
+                battery: batteryLevel,
+                location: location,
+                timestamp: Date.now(),
+                message: `⚠️ ${user.email.split('@')[0]}'s battery is low (${batteryLevel}%)`,
+                acknowledged: {}
+              });
+              setLowBatteryAlerts(prev => new Set([...prev, user.uid]));
+            }
             
             setMyLocation(location);
             setMapCenter({ lat: location.lat, lng: location.lng });
@@ -293,12 +418,21 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               if (address) setMyAddress(address);
             });
             
-            // Auto-center map on user's location
-            if (mapRef.current) {
-              mapRef.current.setView([location.lat, location.lng], 15);
+            // Auto-center map on user's location (only in follow mode)
+            if (mapRef.current && followMode) {
+              const map = mapRef.current;
+              if (map && map.setView && map.getZoom) {
+                map.setView([location.lat, location.lng], map.getZoom());
+              }
             }
             
             updateUserLocation(user.uid, location);
+            updateGroupMemberLocation(currentGroup, user.uid, {
+              ...location,
+              name: user.email.split('@')[0],
+              email: user.email,
+              role: isAdmin ? 'admin' : 'member'
+            });
           },
           (error) => console.error('Location error:', error),
           options
@@ -310,6 +444,8 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       if (unsubscribeLocations) unsubscribeLocations();
       if (unsubscribeMessages) unsubscribeMessages();
       if (unsubscribeEmergency) unsubscribeEmergency();
+      if (unsubscribeRequests) unsubscribeRequests();
+      if (unsubscribeNotifications) unsubscribeNotifications();
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -337,6 +473,12 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       // Clear all alerts and notifications
       setEmergencyAlerts([]);
       
+      // Clear all emergency notification intervals
+      Object.values(emergencyIntervals).forEach(intervalId => {
+        clearInterval(intervalId);
+      });
+      setEmergencyIntervals({});
+      
       // Close all active browser notifications
       activeNotifications.forEach(notification => {
         try {
@@ -354,7 +496,23 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   };
 
   const toggleTracking = () => {
-    setIsTracking(!isTracking);
+    if (isTracking) {
+      // Ask for confirmation before turning off tracking
+      if (window.confirm('Are you sure you want to stop sharing your location? Your last known location will remain visible to others.')) {
+        setIsTracking(false);
+        // Mark user as offline but keep last location
+        if (myLocation) {
+          const locationRef = ref(realtimeDb, `groups/${currentGroup}/members/${user.uid}`);
+          set(locationRef, {
+            ...myLocation,
+            offline: true,
+            lastSeen: Date.now()
+          });
+        }
+      }
+    } else {
+      setIsTracking(true);
+    }
   };
   
   const toggleEmergency = () => {
@@ -362,15 +520,25 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     setEmergencyMode(newEmergencyMode);
     
     if (newEmergencyMode) {
-      // Send emergency alert
+      // Send emergency alert to all group members
       sendEmergencyAlert(currentGroup, {
+        type: 'emergency',
         userId: user.uid,
         name: user.email.split('@')[0],
         location: myLocation,
         timestamp: Date.now(),
-        message: 'Emergency help needed!'
+        message: `🚨 ${user.email.split('@')[0]} needs immediate help!`,
+        acknowledged: {}
       });
-      showNotification('🚨 Emergency Mode Activated', 'Your location is being shared with high frequency');
+      showNotification('🚨 Emergency Alert Sent', 'All group members have been notified');
+    }
+  };
+  
+  const removeMember = async (memberId) => {
+    if (window.confirm('Remove this member from the group?')) {
+      const memberRef = ref(realtimeDb, `groups/${currentGroup}/members/${memberId}`);
+      await set(memberRef, null);
+      showNotification('Member Removed', 'Member has been removed from the group');
     }
   };
   
@@ -386,16 +554,84 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     }
   };
   
+  const startRepetitiveEmergencyNotification = (alert) => {
+    const alertKey = `${alert.userId}-${alert.timestamp}`;
+    
+    // Clear any existing interval for this alert
+    if (emergencyIntervals[alertKey]) {
+      clearInterval(emergencyIntervals[alertKey]);
+    }
+    
+    const showNotification = () => {
+      const notification = new Notification('🚨 EMERGENCY ALERT!', {
+        body: alert.message || `${alert.name} needs immediate help!`,
+        tag: `emergency-${alert.userId}`,
+        requireInteraction: true,
+        icon: '/favicon.ico'
+      });
+      
+      notification.onclick = () => {
+        handleAcknowledgeAlert(alert, alert.id);
+        notification.close();
+      };
+      
+      // Auto-close after 5 seconds and show again
+      setTimeout(() => {
+        if (!notification.closed) {
+          notification.close();
+        }
+      }, 5000);
+    };
+    
+    // Show first notification immediately
+    showNotification();
+    
+    // Set up repetitive notifications every 4 seconds
+    const intervalId = setInterval(() => {
+      const isStillActive = emergencyAlerts.some(a => a.id === alert.id);
+      const isAcknowledged = alert.acknowledged && alert.acknowledged[user.uid];
+      
+      if (!isStillActive || isAcknowledged) {
+        clearInterval(intervalId);
+        setEmergencyIntervals(prev => {
+          const updated = { ...prev };
+          delete updated[alertKey];
+          return updated;
+        });
+        return;
+      }
+      
+      showNotification();
+    }, 4000); // Repeat every 4 seconds
+    
+    // Store interval reference
+    setEmergencyIntervals(prev => ({
+      ...prev,
+      [alertKey]: intervalId
+    }));
+  };
+  
   const handleAcknowledgeAlert = async (alert, alertId) => {
     try {
-      // Close the notification if it exists
+      // Stop repetitive notifications
+      const alertKey = `${alert.userId}-${alert.timestamp}`;
+      if (emergencyIntervals[alertKey]) {
+        clearInterval(emergencyIntervals[alertKey]);
+        setEmergencyIntervals(prev => {
+          const updated = { ...prev };
+          delete updated[alertKey];
+          return updated;
+        });
+      }
+      
+      // Close any active notifications
       if (alert.notificationRef) {
         alert.notificationRef.close();
       }
       
-      // Mark alert as acknowledged to prevent future notifications
-      const alertKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`;
-      setAcknowledgedAlerts(prev => new Set([...prev, alertKey]));
+      // Mark alert as acknowledged
+      const ackKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`;
+      setAcknowledgedAlerts(prev => new Set([...prev, ackKey]));
       
       // For demo alerts, remove directly from state
       if (alertId && alertId.startsWith('demo_alert_')) {
@@ -406,7 +642,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       }
     } catch (error) {
       console.error('Error acknowledging alert:', error);
-      // Fallback: remove from local state anyway
       setEmergencyAlerts(prev => prev.filter(a => a.id !== alertId));
     }
   };
@@ -475,57 +710,84 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     return null;
   };
   
-  const handleApproveRequest = (requestId) => {
+  const handleApproveRequest = async (requestId) => {
     const request = memberRequests.find(r => r.id === requestId);
     if (request) {
-      // Remove from requests
-      setMemberRequests(prev => prev.filter(r => r.id !== requestId));
-      
-      // Add as demo user to show in group
-      const newMember = {
-        id: `approved_${requestId}`,
-        name: request.name,
-        email: request.email,
-        lat: myLocation ? myLocation.lat + (Math.random() - 0.5) * 0.01 : 19.0760,
-        lng: myLocation ? myLocation.lng + (Math.random() - 0.5) * 0.01 : 72.8777,
-        timestamp: Date.now(),
-        battery: Math.floor(Math.random() * 100),
-        accuracy: Math.floor(Math.random() * 50) + 10
-      };
-      
-      setDemoUsers(prev => ({
-        ...prev,
-        [newMember.id]: newMember
-      }));
-      
-      // Only show notification if not already notified
-      if (!notifiedRequests.has(`approve_${requestId}`)) {
+      try {
+        // Approve in Firebase
+        await approveMemberRequest(currentGroup, requestId, request.userId || `user_${Date.now()}`, {
+          name: request.name,
+          email: request.email,
+          role: 'member'
+        });
+        
+        // Send notification to the approved user
+        await sendNotification(currentGroup, {
+          type: 'request_approved',
+          userId: request.userId,
+          title: '✅ Request Approved',
+          message: `Welcome to ${currentGroup}! Your request has been approved.`,
+          from: 'admin'
+        });
+        
         showNotification('✓ Request Approved', `${request.name} has been added to the group`);
-        setNotifiedRequests(prev => new Set([...prev, `approve_${requestId}`]));
+      } catch (error) {
+        console.error('Error approving request:', error);
+        showNotification('❌ Error', 'Failed to approve request');
       }
     }
   };
   
-  const handleRejectRequest = (requestId) => {
+  const handleRejectRequest = async (requestId) => {
     const request = memberRequests.find(r => r.id === requestId);
     if (request) {
-      setMemberRequests(prev => prev.filter(r => r.id !== requestId));
-      // Only show notification if not already notified
-      if (!notifiedRequests.has(`reject_${requestId}`)) {
+      try {
+        // Reject in Firebase
+        await rejectMemberRequest(currentGroup, requestId);
+        
+        // Send notification to the rejected user
+        await sendNotification(currentGroup, {
+          type: 'request_rejected',
+          userId: request.userId,
+          title: '❌ Request Rejected',
+          message: `Your request to join ${currentGroup} was not approved.`,
+          from: 'admin'
+        });
+        
         showNotification('✕ Request Rejected', `${request.name}'s request was rejected`);
-        setNotifiedRequests(prev => new Set([...prev, `reject_${requestId}`]));
+      } catch (error) {
+        console.error('Error rejecting request:', error);
+        showNotification('❌ Error', 'Failed to reject request');
       }
     }
   };
   
 
   
-  // Request notification permission
+  // Request notification permission and get battery level
   useEffect(() => {
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(permission => {
         console.log('Notification permission:', permission);
       });
+    }
+    
+    // Get battery level
+    if ('getBattery' in navigator) {
+      navigator.getBattery().then(battery => {
+        setBatteryLevel(Math.round(battery.level * 100));
+        
+        battery.addEventListener('levelchange', () => {
+          setBatteryLevel(Math.round(battery.level * 100));
+        });
+      });
+    } else {
+      // Simulate battery level for demo
+      const simulateBattery = () => {
+        setBatteryLevel(prev => Math.max(5, prev - Math.random() * 2));
+      };
+      const interval = setInterval(simulateBattery, 30000);
+      return () => clearInterval(interval);
     }
   }, []);
   
@@ -544,29 +806,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
 
   useEffect(() => {
     setCurrentGroup(initialGroup);
-    
-    // Add demo member requests for admin only
-    if (isAdmin && initialGroup) {
-      setTimeout(() => {
-        setMemberRequests([
-          {
-            id: 'req_1',
-            name: 'Rahul Sharma',
-            email: 'rahul.sharma@example.com',
-            timestamp: Date.now() - 300000, // 5 minutes ago
-            message: 'Hi! I would like to join your group for the college trip.'
-          },
-          {
-            id: 'req_2', 
-            name: 'Priya Patel',
-            email: 'priya.patel@example.com',
-            timestamp: Date.now() - 120000, // 2 minutes ago
-            message: 'Can I join your location sharing group?'
-          }
-        ]);
-      }, 2000);
-    }
-  }, [initialGroup, isAdmin]);
+  }, [initialGroup]);
 
   // Close profile menu when clicking outside
   useEffect(() => {
@@ -623,11 +863,23 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           </button>
           
           <button 
-            onClick={() => setShowChat(!showChat)} 
+            onClick={() => {
+              setShowChat(!showChat);
+              if (!showChat) setUnreadMessages(0);
+            }} 
             className={`control-btn ${showChat ? 'active' : ''}`}
           >
             💬 Chat
+            {unreadMessages > 0 && (
+              <span className="chat-badge">{unreadMessages}</span>
+            )}
           </button>
+          
+
+          
+
+          
+
           
 
           
@@ -677,6 +929,12 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 onClick={() => setActiveTab('distance')}
               >
                 📍 Distance
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'manage' ? 'active' : ''}`}
+                onClick={() => setActiveTab('manage')}
+              >
+                👥 Manage
               </button>
             </div>
             <button 
@@ -738,30 +996,13 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                         min="1" 
                         max="999" 
                         value={distanceValue}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          setDistanceValue(value);
-                          // Convert to meters for internal use
-                          const meters = distanceUnit === 'km' ? value * 1000 : 
-                                        distanceUnit === 'mi' ? value * 1609.34 : 
-                                        distanceUnit === 'ft' ? value * 0.3048 : value;
-                          setLaggingDistance(Math.round(meters));
-                        }}
+                        onChange={(e) => setDistanceValue(Number(e.target.value))}
                         className="distance-number-input"
                         placeholder="Enter distance"
                       />
                       <select 
                         value={distanceUnit}
-                        onChange={(e) => {
-                          const newUnit = e.target.value;
-                          setDistanceUnit(newUnit);
-                          // Convert current distance to new unit
-                          const meters = laggingDistance;
-                          const newValue = newUnit === 'km' ? meters / 1000 : 
-                                          newUnit === 'mi' ? meters / 1609.34 : 
-                                          newUnit === 'ft' ? meters / 0.3048 : meters;
-                          setDistanceValue(Math.round(newValue * 100) / 100);
-                        }}
+                        onChange={(e) => setDistanceUnit(e.target.value)}
                         className="distance-unit-select"
                       >
                         <option value="m">meters</option>
@@ -769,6 +1010,18 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                         <option value="ft">feet</option>
                         <option value="mi">miles</option>
                       </select>
+                      <button 
+                        onClick={() => {
+                          const meters = distanceUnit === 'km' ? distanceValue * 1000 : 
+                                        distanceUnit === 'mi' ? distanceValue * 1609.34 : 
+                                        distanceUnit === 'ft' ? distanceValue * 0.3048 : distanceValue;
+                          setLaggingDistance(Math.round(meters));
+                          showNotification('✓ Distance Set', `Lag alert distance set to ${distanceValue}${distanceUnit}`);
+                        }}
+                        className="set-distance-btn"
+                      >
+                        Set
+                      </button>
                     </div>
                     <div className="current-distance">
                       <span>Current: {laggingDistance}m</span>
@@ -783,6 +1036,42 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 </div>
               </div>
             )}
+            
+            {activeTab === 'manage' && (
+              <div className="member-management">
+                <div className="management-header">
+                  <h4>👥 Group Members</h4>
+                  <p>Manage group members and their permissions</p>
+                </div>
+                <div className="member-list">
+                  {Object.entries(groupMembers).length === 0 ? (
+                    <div className="no-members">
+                      <p>No members in group</p>
+                    </div>
+                  ) : (
+                    Object.entries(groupMembers).map(([userId, member]) => (
+                      <div key={userId} className="management-member-item">
+                        <div className="member-info">
+                          <div className="member-name">{member.name || 'Unknown'}</div>
+                          <div className="member-email">{member.email || 'No email'}</div>
+                          <div className="member-role">{member.role || 'member'}</div>
+                        </div>
+                        <div className="member-actions">
+                          {userId !== user.uid && (
+                            <button 
+                              onClick={() => removeMember(userId)}
+                              className="remove-btn"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -791,12 +1080,54 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       <div className="map-content">
         {/* Map */}
         <div className="map-container">
+          <div className="map-controls">
+            <button 
+              onClick={() => {
+                if (myLocation && mapRef.current) {
+                  const map = mapRef.current;
+                  if (map && map.setView) {
+                    map.setView([myLocation.lat, myLocation.lng], 16);
+                    setFollowMode(true);
+                  }
+                }
+              }}
+              className="map-control-btn center-me"
+              title="Center on Me"
+            >
+              🎯
+            </button>
+            
+
+            
+            <button 
+              onClick={() => {
+                if (mapRef.current) {
+                  const map = mapRef.current;
+                  const bounds = [];
+                  if (myLocation) bounds.push([myLocation.lat, myLocation.lng]);
+                  Object.values({ ...groupMembers, ...demoUsers }).forEach(member => {
+                    if (member.lat && member.lng) bounds.push([member.lat, member.lng]);
+                  });
+                  if (bounds.length > 0 && map && map.fitBounds) {
+                    map.fitBounds(bounds, { padding: [20, 20] });
+                  }
+                }
+              }}
+              className="map-control-btn fit-all"
+              title="Fit All Members"
+            >
+              👥
+            </button>
+            
+
+          </div>
+          
           <MapContainer
             center={[mapCenter.lat, mapCenter.lng]}
             zoom={13}
             style={{ height: '500px', width: '100%' }}
-            whenCreated={(map) => { mapRef.current = map; }}
           >
+            <MapController mapRef={mapRef} setFollowMode={setFollowMode} />
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -815,6 +1146,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                     </h3>
                     {myAddress && <p><strong>📍 {myAddress}</strong></p>}
                     <p>Updated: {getTimeAgo(myLocation.timestamp)}</p>
+                    <p>Battery: {batteryLevel}% {batteryLevel <= 20 ? '🔋' : '🔋'}</p>
                     <p>Accuracy: ±{myLocation.accuracy}m</p>
                     <p>Coordinates: {myLocation.lat.toFixed(6)}, {myLocation.lng.toFixed(6)}</p>
                   </div>
@@ -823,31 +1155,50 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             )}
             
             {/* Other Members Markers */}
-            {Object.entries({ ...groupMembers, ...demoUsers }).map(([userId, member]) => (
-              member.lat && member.lng && userId !== user.uid && (
+            {Object.entries({ ...groupMembers, ...demoUsers }).map(([userId, member]) => {
+              const isOffline = member.offline || (member.timestamp && (Date.now() - member.timestamp > 300000));
+              const markerColor = isOffline ? '#666666' : (memberColors[userId] || '#666666');
+              const markerIcon = member.emergency ? emergencyIcon : createColoredIcon(markerColor, memberLetters[userId] || '?');
+              
+              return member.lat && member.lng && userId !== user.uid && (
                 <Marker
                   key={userId}
                   position={[member.lat, member.lng]}
-                  icon={member.emergency ? emergencyIcon : createColoredIcon(memberColors[userId] || '#666666', memberLetters[userId] || '?')}
+                  icon={markerIcon}
+                  opacity={isOffline ? 0.6 : 1}
                 >
                   <Popup>
                     <div className="member-info-window">
-                      <h3 style={{color: memberColors[userId] || '#666666'}}>
+                      <h3 style={{color: markerColor}}>
                         {member.name || 'Unknown'}
                         {member.emergency && ' 🚨'}
                         {member.role === 'admin' && ' 👑'}
                         {userId.startsWith('demo_') && ' 🧪'}
+                        {isOffline && ' 🔴'}
                       </h3>
+                      {memberAddresses[userId] && <p><strong>📍 {memberAddresses[userId]}</strong></p>}
+                      <p>Status: {isOffline ? 'Offline' : 'Online'}</p>
                       <p>Last seen: {getTimeAgo(member.timestamp)}</p>
+                      {member.battery && <p>Battery: {member.battery}% {member.battery <= 20 ? '🔋' : '🔋'}</p>}
                       <p>Accuracy: ±{member.accuracy}m</p>
                       {myLocation && (
                         <p>Distance: {calculateDistance(myLocation.lat, myLocation.lng, member.lat, member.lng).toFixed(0)}m away</p>
                       )}
+                      <p>Coordinates: {member.lat.toFixed(6)}, {member.lng.toFixed(6)}</p>
+                      {isAdmin && (
+                        <button 
+                          onClick={() => removeMember(userId)}
+                          className="remove-member-btn"
+                          style={{background: '#ff4444', color: 'white', padding: '4px 8px', border: 'none', borderRadius: '4px', marginTop: '8px'}}
+                        >
+                          Remove Member
+                        </button>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
-              )
-            ))}
+              );
+            })}
           </MapContainer>
         </div>
 
@@ -895,17 +1246,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           
 
           
-          {/* Admin Panel */}
-          {isAdmin && (
-            <AdminPanel 
-              currentGroup={currentGroup}
-              isAdmin={isAdmin}
-              onMemberJoin={(newMember) => {
-                console.log('New member joined:', newMember);
-                // Handle new member joining
-              }}
-            />
-          )}
+
           
           {/* Simple Members Panel */}
           <SimpleMembersPanel 
@@ -913,6 +1254,8 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             currentUser={{ uid: user.uid, role: isAdmin ? 'admin' : 'member', ...myLocation }}
             currentGroup={currentGroup}
             mapRef={mapRef}
+            memberAddresses={memberAddresses}
+            myAddress={myAddress}
             onMemberClick={(userId, member) => {
               console.log('Member clicked:', member.name || member.email);
               setSelectedMember(userId);
@@ -932,6 +1275,12 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 <span className="status-label">Location Tracking:</span>
                 <span className={`status-value ${isTracking ? 'active' : 'inactive'}`}>
                   {isTracking ? '🟢 Active' : '🔴 Paused'}
+                </span>
+              </div>
+              <div className="status-item">
+                <span className="status-label">Battery Level:</span>
+                <span className={`status-value ${batteryLevel <= 20 ? 'emergency-text' : 'active'}`}>
+                  🔋 {batteryLevel}%
                 </span>
               </div>
               <div className="status-item">
@@ -969,6 +1318,24 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               )}
             </div>
           </div>
+          
+          {/* Location History */}
+          {locationHistory.length > 0 && (
+            <div className="history-panel">
+              <h3>📍 Location History</h3>
+              <div className="history-list">
+                {locationHistory.slice(-5).reverse().map((loc, index) => (
+                  <div key={index} className="history-item">
+                    <div className="history-time">{new Date(loc.timestamp).toLocaleTimeString()}</div>
+                    <div className="history-coords">{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}</div>
+                    {loc.address && <div className="history-address">{loc.address}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+
           
           {/* Emergency Alerts */}
           {emergencyAlerts.length > 0 && (

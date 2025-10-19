@@ -7,16 +7,21 @@ const LandingPage = () => {
   useEffect(() => {
     // Create floating particles
     const createParticle = () => {
+      const container = document.querySelector('.landing-container');
+      if (!container) return; // Safety check
+      
       const particle = document.createElement('div');
       particle.className = 'floating-particle';
       particle.innerHTML = ['🛰️', '📡', '⚡', '🎯', '🌐', '📍', '⟡', '◉', '●', '▲', '◆', '⬢'][Math.floor(Math.random() * 12)];
       particle.style.left = Math.random() * 100 + '%';
       particle.style.animationDuration = (Math.random() * 3 + 2) + 's';
       particle.style.color = ['#00ff88', '#ff0080', '#0080ff', '#ffaa00', '#ff6b6b', '#00ffff'][Math.floor(Math.random() * 6)];
-      document.querySelector('.landing-container').appendChild(particle);
+      container.appendChild(particle);
       
       setTimeout(() => {
-        particle.remove();
+        if (particle.parentNode) {
+          particle.remove();
+        }
       }, 5000);
     };
 

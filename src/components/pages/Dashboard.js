@@ -4,6 +4,7 @@ import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
 import MapDashboard from '../map/MapDashboard';
+import JoinGroup from '../group/JoinGroup';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -22,6 +23,7 @@ const Dashboard = () => {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [showMyGroups, setShowMyGroups] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
+  const [showJoinRequest, setShowJoinRequest] = useState(false);
 
   // Load user's existing groups on component mount
   useEffect(() => {
@@ -268,8 +270,10 @@ const Dashboard = () => {
   };
 
   if (currentGroup) {
-    const isAdmin = groupMembers[user?.uid]?.role === 'admin';
-    console.log('Admin check:', { userId: user?.uid, memberData: groupMembers[user?.uid], isAdmin });
+    // Check if user is admin by role OR if user is the group creator
+    const memberRole = groupMembers[user?.uid]?.role;
+    const isAdmin = memberRole === 'admin';
+    console.log('Admin check:', { userId: user?.uid, memberData: groupMembers[user?.uid], memberRole, isAdmin });
     return <MapDashboard currentGroup={currentGroup} onLeaveGroup={handleLeaveGroup} isAdmin={isAdmin} />;
   }
 
@@ -320,12 +324,11 @@ const Dashboard = () => {
               </div>
               
               <button 
-                onClick={handleJoinGroup} 
+                onClick={() => setShowJoinRequest(true)} 
                 className="option-btn join-btn"
-                disabled={groupId.length !== 6}
               >
                 <span className="btn-icon">🚀</span>
-                Join Adventure
+                Send Join Request
               </button>
               
 
@@ -587,6 +590,17 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Join Request Modal */}
+        {showJoinRequest && (
+          <JoinGroup 
+            onJoinSuccess={() => {
+              setShowJoinRequest(false);
+              // Optionally refresh groups or show success message
+            }}
+            onCancel={() => setShowJoinRequest(false)}
+          />
         )}
 
         {/* Share Modal */}

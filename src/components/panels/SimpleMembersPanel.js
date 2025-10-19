@@ -1,7 +1,7 @@
 import React from 'react';
 import './SimpleMembersPanel.css';
 
-const SimpleMembersPanel = ({ members, currentUser, onMemberClick, onSendMessage, mapRef, currentGroup }) => {
+const SimpleMembersPanel = ({ members, currentUser, onMemberClick, onSendMessage, mapRef, currentGroup, memberAddresses, myAddress }) => {
   const memberGradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -220,11 +220,21 @@ const SimpleMembersPanel = ({ members, currentUser, onMemberClick, onSendMessage
                   </div>
                 </div>
               </div>
-              {member.lat && member.lng && !userId.startsWith('demo_') && (
+              {member.lat && member.lng && (
                 <div className="member-location">
-                  <span className="location-coords">
-                    📍 {member.lat.toFixed(4)}, {member.lng.toFixed(4)}
-                  </span>
+                  {isCurrentUser && myAddress ? (
+                    <span className="location-address">
+                      📍 {myAddress}
+                    </span>
+                  ) : memberAddresses && memberAddresses[userId] ? (
+                    <span className="location-address">
+                      📍 {memberAddresses[userId]}
+                    </span>
+                  ) : (
+                    <span className="location-coords">
+                      📍 {member.lat.toFixed(4)}, {member.lng.toFixed(4)}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

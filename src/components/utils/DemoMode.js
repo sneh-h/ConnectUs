@@ -70,6 +70,21 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
         }, index * 500);
       });
 
+      // Trigger emergency alert after 3 seconds
+      const emergencyTimeout = setTimeout(() => {
+        if (onTriggerLaggingAlert) {
+          onTriggerLaggingAlert({
+            type: 'emergency',
+            userId: 'demo_0',
+            name: 'Saurav Thakur',
+            location: { lat: baseLocation.lat + 0.01, lng: baseLocation.lng + 0.01 },
+            timestamp: Date.now(),
+            message: '🚨 Saurav Thakur needs immediate help!',
+            acknowledged: {}
+          });
+        }
+      }, 3000);
+      
       // Trigger lagging alert after 10 seconds
       const alertTimeout = setTimeout(() => {
         if (!alertTriggered && onTriggerLaggingAlert) {
@@ -203,6 +218,7 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
 
       return () => {
         clearInterval(interval);
+        clearTimeout(emergencyTimeout);
         clearTimeout(alertTimeout);
         clearTimeout(alertTimeout2);
       };
