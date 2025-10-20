@@ -158,3 +158,35 @@ export const subscribeToNotifications = (groupId, userId, callback) => {
   });
   return () => off(notificationsRef);
 };
+
+// Privacy settings functions
+export const updatePrivacySettings = (groupId, userId, settings) => {
+  const privacyRef = ref(realtimeDb, `groups/${groupId}/privacy/${userId}`);
+  return set(privacyRef, settings);
+};
+
+export const getPrivacySettings = async (groupId, userId) => {
+  const { get } = await import('firebase/database');
+  const privacyRef = ref(realtimeDb, `groups/${groupId}/privacy/${userId}`);
+  const snapshot = await get(privacyRef);
+  return snapshot.exists() ? snapshot.val() : null;
+};
+
+export const canViewLocation = async (groupId, locationOwnerId, viewerId) => {
+  if (locationOwnerId === viewerId) return true;
+  
+  const settings = await getPrivacySettings(groupId, locationOwnerId);
+  if (!settings || settings.shareWith === 'all') return true;
+  
+  return settings.selectedMembers && settings.selectedMembers.includes(viewerId);
+};
+
+export const updateGroupMemberLocationWithPrivacy = async (groupId, userId, location) => {
+  const settings = await getPrivacySettings(groupId, userId);
+  
+  // Always update the location in the database
+  await updateGroupMemberLocation(groupId, userId, location);
+  
+  // The privacy filtering happens on the client side when reading locations
+  return true;
+};

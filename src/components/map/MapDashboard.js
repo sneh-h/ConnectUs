@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert, subscribeToMemberRequests, approveMemberRequest, rejectMemberRequest, sendNotification, subscribeToNotifications, updateGroupMemberLocation } from '../../firebase/location';
+import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert, subscribeToMemberRequests, approveMemberRequest, rejectMemberRequest, sendNotification, subscribeToNotifications, updateGroupMemberLocation, canViewLocation, updateGroupMemberLocationWithPrivacy } from '../../firebase/location';
 import { ref, set } from 'firebase/database';
 import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
 import SimpleMembersPanel from '../panels/SimpleMembersPanel';
 import DemoMode from '../utils/DemoMode';
+import UserProfile from '../profile/UserProfile';
+import PrivacySettings from '../privacy/PrivacySettings';
 import './MapDashboard.css';
 import 'leaflet/dist/leaflet.css';
 
@@ -57,7 +59,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [currentGroup, setCurrentGroup] = useState(initialGroup);
   const [groupMembers, setGroupMembers] = useState({});
   const [myLocation, setMyLocation] = useState(null);
-  const [isTracking, setIsTracking] = useState(false);
+  const [isTracking, setIsTracking] = useState(() => localStorage.getItem('isTracking') === 'true');
   const [mapCenter, setMapCenter] = useState({ lat: 19.0760, lng: 72.8777 });
   const [emergencyMode, setEmergencyMode] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -94,6 +96,9 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [showMemberManagement, setShowMemberManagement] = useState(false);
   const [followMode, setFollowMode] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
+  const [filteredGroupMembers, setFilteredGroupMembers] = useState({});
   const mapRef = useRef(null);
   const watchIdRef = useRef(null);
   const chatMessagesRef = useRef(null);
@@ -199,6 +204,55 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     let unsubscribeNotifications = null;
 
     if (currentGroup && user) {
+      // Subscribe to group locations with privacy filtering
+      unsubscribeLocations = subscribeToGroupLocations(currentGroup, async (snapshot) => {
+        if (snapshot.exists()) {
+          const members = snapshot.val();
+          const filtered = {};
+          
+          // Filter members based on privacy settings
+          for (const [memberId, memberData] of Object.entries(members)) {
+            const canView = await canViewLocation(currentGroup, memberId, user.uid);
+            if (canView) {
+              filtered[memberId] = memberData;
+            }
+          }
+          
+          setGroupMembers(filtered);
+          
+          // Update member colors and letters for all members (including filtered ones)
+          const allMembers = { ...filtered, ...demoUsers };
+          const newColors = { ...memberColors };
+          const newLetters = generateUniqueInitials(allMembers);
+          
+          Object.entries(allMembers).forEach(([userId, member], index) => {
+            if (!newColors[userId]) {
+              newColors[userId] = colors[index % colors.length];
+            }
+            
+            // Get address for each member if not already cached
+            if (member.lat && member.lng && !memberAddresses[userId] && userId !== user.uid) {
+              getAddressFromCoords(member.lat, member.lng).then(address => {
+                if (address) {
+                  setMemberAddresses(prev => ({
+                    ...prev,
+                    [userId]: address
+                  }));
+                }
+              });
+            }
+          });
+          
+          setMemberColors(newColors);
+          setMemberLetters(newLetters);
+          
+          // Check for lagging members (admin only)
+          if (isAdmin && myLocation) {
+            checkLaggingMembers(filtered);
+          }
+        }
+      });
+
       // Subscribe to member requests (admin only)
       if (isAdmin) {
         unsubscribeRequests = subscribeToMemberRequests(currentGroup, (snapshot) => {
@@ -231,46 +285,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               showNotification(notif.title, notif.message);
             }
           });
-        }
-      });
-      
-      // Subscribe to group locations
-      unsubscribeLocations = subscribeToGroupLocations(currentGroup, (snapshot) => {
-        if (snapshot.exists()) {
-          const members = snapshot.val();
-          setGroupMembers(members);
-          
-          // Assign colors and generate unique initials
-          const newColors = { ...memberColors };
-          const allMembers = { ...members, ...demoUsers };
-          const newLetters = generateUniqueInitials(allMembers);
-          
-          Object.entries(allMembers).forEach(([userId, member], index) => {
-            if (!newColors[userId]) {
-              newColors[userId] = colors[index % colors.length];
-            }
-            
-            // Get address for each member if not already cached
-            if (member.lat && member.lng && !memberAddresses[userId]) {
-              getAddressFromCoords(member.lat, member.lng).then(address => {
-                if (address) {
-                  setMemberAddresses(prev => ({
-                    ...prev,
-                    [userId]: address
-                  }));
-                }
-              });
-            }
-          });
-          setMemberColors(newColors);
-          setMemberLetters(newLetters);
-          
-
-          
-          // Check for lagging members (admin only)
-          if (isAdmin && myLocation) {
-            checkLaggingMembers(members);
-          }
         }
       });
       
@@ -427,7 +441,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             }
             
             updateUserLocation(user.uid, location);
-            updateGroupMemberLocation(currentGroup, user.uid, {
+            updateGroupMemberLocationWithPrivacy(currentGroup, user.uid, {
               ...location,
               name: user.email.split('@')[0],
               email: user.email,
@@ -500,6 +514,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       // Ask for confirmation before turning off tracking
       if (window.confirm('Are you sure you want to stop sharing your location? Your last known location will remain visible to others.')) {
         setIsTracking(false);
+        localStorage.setItem('isTracking', 'false');
         // Mark user as offline but keep last location
         if (myLocation) {
           const locationRef = ref(realtimeDb, `groups/${currentGroup}/members/${user.uid}`);
@@ -512,6 +527,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       }
     } else {
       setIsTracking(true);
+      localStorage.setItem('isTracking', 'true');
     }
   };
   
@@ -900,11 +916,11 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                   <div className="profile-email">{user?.email}</div>
                 </div>
                 <div className="profile-actions">
-                  <button onClick={() => { handleLeaveGroup(); setShowProfileMenu(false); }} className="dropdown-btn leave">
-                    🚪 Leave Group
+                  <button onClick={() => { setShowProfile(true); setShowProfileMenu(false); }} className="dropdown-btn profile">
+                    👤 Profile Settings
                   </button>
-                  <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} className="dropdown-btn logout">
-                    ↗️ Logout
+                  <button onClick={() => { setShowPrivacySettings(true); setShowProfileMenu(false); }} className="dropdown-btn privacy">
+                    🔒 Privacy Settings
                   </button>
                 </div>
               </div>
@@ -1409,6 +1425,24 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             <button onClick={sendChatMessage}>Send</button>
           </div>
         </div>
+      )}
+
+      {/* User Profile Modal */}
+      {showProfile && (
+        <UserProfile 
+          onClose={() => setShowProfile(false)} 
+          onLogout={handleLogout}
+          onLeaveGroup={handleLeaveGroup}
+        />
+      )}
+      
+      {/* Privacy Settings Modal */}
+      {showPrivacySettings && (
+        <PrivacySettings 
+          currentGroup={currentGroup}
+          groupMembers={groupMembers}
+          onClose={() => setShowPrivacySettings(false)}
+        />
       )}
     </div>
   );

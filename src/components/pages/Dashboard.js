@@ -10,10 +10,10 @@ import './Dashboard.css';
 const Dashboard = () => {
   const { user } = useAuth();
   const [groupId, setGroupId] = useState('');
-  const [currentGroup, setCurrentGroup] = useState(null);
+  const [currentGroup, setCurrentGroup] = useState(() => localStorage.getItem('currentGroup') || null);
   const [groupMembers, setGroupMembers] = useState({});
   const [myLocation, setMyLocation] = useState(null);
-  const [isTracking, setIsTracking] = useState(false);
+  const [isTracking, setIsTracking] = useState(() => localStorage.getItem('isTracking') === 'true');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -24,6 +24,7 @@ const Dashboard = () => {
   const [showMyGroups, setShowMyGroups] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [showJoinRequest, setShowJoinRequest] = useState(false);
+  const [groupData, setGroupData] = useState(null);
 
   // Load user's existing groups on component mount
   useEffect(() => {
@@ -104,7 +105,9 @@ const Dashboard = () => {
 
   const handleSelectExistingGroup = (group) => {
     setCurrentGroup(group.id);
+    localStorage.setItem('currentGroup', group.id);
     setIsTracking(true);
+    localStorage.setItem('isTracking', 'true');
   };
 
 
@@ -165,7 +168,9 @@ const Dashboard = () => {
         joinedAt: Date.now()
       });
       setCurrentGroup(actualGroupId);
+      localStorage.setItem('currentGroup', actualGroupId);
       setIsTracking(true);
+      localStorage.setItem('isTracking', 'true');
     } catch (error) {
       alert('Failed to join group: ' + error.message);
     }
@@ -217,7 +222,9 @@ const Dashboard = () => {
       if (actualGroupId) {
         // You're already in the group as admin from creation, just set current group
         setCurrentGroup(actualGroupId);
+        localStorage.setItem('currentGroup', actualGroupId);
         setIsTracking(true);
+        localStorage.setItem('isTracking', 'true');
       }
     } catch (error) {
       console.error('Error joining created group:', error);
@@ -244,7 +251,9 @@ const Dashboard = () => {
 
   const handleLeaveGroup = () => {
     setCurrentGroup(null);
+    localStorage.removeItem('currentGroup');
     setIsTracking(false);
+    localStorage.removeItem('isTracking');
     setGroupMembers({});
     setMyLocation(null);
   };
@@ -269,11 +278,37 @@ const Dashboard = () => {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  // Load group data to check creator
+  useEffect(() => {
+    const loadGroupData = async () => {
+      if (currentGroup && user) {
+        const { get, ref } = await import('firebase/database');
+        const groupRef = ref(realtimeDb, `groups/${currentGroup}`);
+        const snapshot = await get(groupRef);
+        if (snapshot.exists()) {
+          setGroupData(snapshot.val());
+        }
+      }
+    };
+    loadGroupData();
+  }, [currentGroup, user]);
+
   if (currentGroup) {
     // Check if user is admin by role OR if user is the group creator
     const memberRole = groupMembers[user?.uid]?.role;
-    const isAdmin = memberRole === 'admin';
-    console.log('Admin check:', { userId: user?.uid, memberData: groupMembers[user?.uid], memberRole, isAdmin });
+    const isCreator = groupData && (groupData.creator === user?.uid || groupData.creatorEmail === user?.email);
+    const isAdmin = memberRole === 'admin' || isCreator;
+    
+    console.log('Admin check:', { 
+      userId: user?.uid, 
+      memberRole, 
+      isCreator, 
+      groupCreator: groupData?.creator,
+      groupCreatorEmail: groupData?.creatorEmail,
+      userEmail: user?.email,
+      isAdmin 
+    });
+    
     return <MapDashboard currentGroup={currentGroup} onLeaveGroup={handleLeaveGroup} isAdmin={isAdmin} />;
   }
 
@@ -735,7 +770,11 @@ const Dashboard = () => {
 
         <div className="tracking-controls">
           <button 
-            onClick={() => setIsTracking(!isTracking)} 
+            onClick={() => {
+              const newTracking = !isTracking;
+              setIsTracking(newTracking);
+              localStorage.setItem('isTracking', newTracking.toString());
+            }} 
             className={`tracking-btn ${isTracking ? 'stop' : 'start'}`}
           >
             {isTracking ? '⏸️ Pause Tracking' : '🎆 Start Tracking'}

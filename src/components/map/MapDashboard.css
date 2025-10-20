@@ -169,6 +169,20 @@
   color: #ff6b6b;
 }
 
+.control-btn.privacy {
+  border-color: #9d4edd;
+  color: #9d4edd;
+}
+
+.control-btn.privacy:hover {
+  background: rgba(157, 78, 221, 0.2);
+}
+
+.control-btn.privacy.active {
+  background: #9d4edd;
+  color: #fff;
+}
+
 .map-content {
   flex: 1;
   display: flex;
@@ -839,6 +853,22 @@
 
 .dropdown-btn.logout:hover {
   background: rgba(0, 255, 136, 0.1);
+}
+
+.dropdown-btn.profile {
+  color: #00ff88;
+}
+
+.dropdown-btn.profile:hover {
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.dropdown-btn.privacy {
+  color: #9d4edd;
+}
+
+.dropdown-btn.privacy:hover {
+  background: rgba(157, 78, 221, 0.1);
 }
 
 /* Admin Panel Styles */
