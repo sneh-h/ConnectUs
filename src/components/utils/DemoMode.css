@@ -83,3 +83,40 @@ input:checked + .toggle-slider:before {
   color: #ff8c00;
   font-weight: 600;
 }
+
+.demo-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.timeline-item {
+  flex: 1;
+  min-width: 80px;
+}
+
+.phase {
+  display: block;
+  font-size: 9px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.phase.completed {
+  background: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.demo-description {
+  font-size: 11px;
+  color: #00ff88;
+  margin: 8px 0 0 0;
+  font-weight: bold;
+  text-align: center;
+}

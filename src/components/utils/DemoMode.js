@@ -6,6 +6,8 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
   const [demoPositions, setDemoPositions] = useState({});
   const [alertTriggered, setAlertTriggered] = useState(false);
   const [demoBatteries, setDemoBatteries] = useState({});
+  const [demoPhase, setDemoPhase] = useState(0);
+  const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
 
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
     const R = 6371e3; // Earth's radius in meters
@@ -36,129 +38,152 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
     return { lat: 19.0760, lng: 72.8777 }; // Default Mumbai location
   };
 
+  const showDemoNotification = (title, body) => {
+    console.log(`DEMO NOTIFICATION: ${title} - ${body}`);
+    
+    if (Notification.permission === 'granted') {
+      try {
+        const notification = new Notification(title, {
+          body: body,
+          icon: '/favicon.ico',
+          tag: `demo-${Date.now()}`,
+          requireInteraction: false
+        });
+        
+        setTimeout(() => {
+          try {
+            notification.close();
+          } catch (e) {}
+        }, 4000);
+        
+        return notification;
+      } catch (error) {
+        console.error('Notification error:', error);
+      }
+    } else {
+      console.log('Notifications not granted. Permission:', Notification.permission);
+    }
+  };
+
   useEffect(() => {
     if (isEnabled) {
+      console.log('Demo mode starting...');
+      setDemoPhase(0);
+      
+      // Request notification permission
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      
       const baseLocation = getBaseLocation();
       
-      // Initialize demo user positions around current user
+      // Initialize and add all demo users immediately
       const initialPositions = {};
       demoUserTemplates.forEach((template, index) => {
         const userId = `demo_${index}`;
         initialPositions[userId] = {
           lat: baseLocation.lat + template.offset.lat,
           lng: baseLocation.lng + template.offset.lng,
-          direction: Math.random() * 2 * Math.PI // Random initial direction
+          direction: Math.random() * 2 * Math.PI
         };
+        
+        const demoUser = {
+          ...template,
+          id: userId,
+          lat: initialPositions[userId].lat,
+          lng: initialPositions[userId].lng,
+          timestamp: Date.now(),
+          battery: template.lagging ? 18 : 85,
+          accuracy: Math.floor(Math.random() * 50) + 10
+        };
+        onAddDemoUser(demoUser);
       });
       setDemoPositions(initialPositions);
 
-      // Add demo users
-      demoUserTemplates.forEach((template, index) => {
-        setTimeout(() => {
-          const userId = `demo_${index}`;
-          const position = initialPositions[userId];
-          const demoUser = {
-            ...template,
-            id: userId,
-            lat: position.lat,
-            lng: position.lng,
-            timestamp: Date.now(),
-            battery: template.lagging ? 25 : 85,
-            accuracy: Math.floor(Math.random() * 50) + 10
-          };
-          onAddDemoUser(demoUser);
-        }, index * 500);
-      });
-
-      // Trigger emergency alert after 3 seconds
-      const emergencyTimeout = setTimeout(() => {
+      const timeouts = [];
+      
+      // 4s: First lagging alert
+      timeouts.push(setTimeout(() => {
+        setDemoPhase(1);
+        const laggingUser = demoUserTemplates.find(u => u.lagging);
+        const userId = `demo_${demoUserTemplates.indexOf(laggingUser)}`;
+        const distance = 650;
+        
         if (onTriggerLaggingAlert) {
           onTriggerLaggingAlert({
-            type: 'emergency',
-            userId: 'demo_0',
-            name: 'Saurav Thakur',
-            location: { lat: baseLocation.lat + 0.01, lng: baseLocation.lng + 0.01 },
+            type: 'lagging',
+            userId: userId,
+            name: laggingUser.name,
+            distance: distance,
+            maxDistance: 500,
+            location: { lat: baseLocation.lat - 0.025, lng: baseLocation.lng - 0.025 },
             timestamp: Date.now(),
-            message: '🚨 Saurav Thakur needs immediate help!',
+            message: `📍 ${laggingUser.name} is ${distance}m away from the group (limit: 500m)`,
             acknowledged: {}
           });
         }
-      }, 3000);
-      
-      // Trigger lagging alert after 10 seconds
-      const alertTimeout = setTimeout(() => {
-        if (!alertTriggered && onTriggerLaggingAlert) {
-          const laggingUser = demoUserTemplates.find(u => u.lagging);
-          if (laggingUser) {
-            const userId = `demo_${demoUserTemplates.indexOf(laggingUser)}`;
-            const baseLocation = getBaseLocation();
-            
-            // Use current position or calculate from initial offset
-            let currentPos = demoPositions[userId];
-            if (!currentPos) {
-              currentPos = {
-                lat: baseLocation.lat + laggingUser.offset.lat,
-                lng: baseLocation.lng + laggingUser.offset.lng
-              };
-            }
-            
-            const distance = calculateDistance(baseLocation.lat, baseLocation.lng, currentPos.lat, currentPos.lng);
-            console.log('Triggering lagging alert for:', laggingUser.name, 'Distance:', Math.round(distance));
-            
-            onTriggerLaggingAlert({
-              type: 'lagging',
-              userId: userId,
-              name: laggingUser.name,
-              distance: Math.round(distance),
-              maxDistance: 500,
-              location: { lat: currentPos.lat, lng: currentPos.lng },
-              timestamp: Date.now(),
-              message: `${laggingUser.name} is ${Math.round(distance)}m away from the group (limit: 500m)`,
-              acknowledged: {}
-            });
-            
-            // Show browser notification
-            if (Notification.permission === 'granted') {
-              new Notification('📍 Member Lagging Behind', {
-                body: `${laggingUser.name} is ${Math.round(distance)}m away from the group!`
-              });
-            }
-            setAlertTriggered(true);
-          }
-        }
-      }, 5000); // Reduced to 5 seconds for faster testing
-      
-      // Second lagging alert after 15 seconds
-      const alertTimeout2 = setTimeout(() => {
-        if (onTriggerLaggingAlert) {
-          const laggingUser = demoUserTemplates.find(u => u.lagging);
-          if (laggingUser) {
-            const userId = `demo_${demoUserTemplates.indexOf(laggingUser)}`;
-            const baseLocation = getBaseLocation();
-            const distance = 850;
-            onTriggerLaggingAlert({
-              type: 'lagging',
-              userId: userId,
-              name: laggingUser.name,
-              distance: distance,
-              maxDistance: 500,
-              location: { lat: baseLocation.lat - 0.03, lng: baseLocation.lng - 0.03 },
-              timestamp: Date.now(),
-              message: `⚠️ ${laggingUser.name} is still ${distance}m away from the group!`,
-              acknowledged: {}
-            });
-            
-            // Show second browser notification
-            if (Notification.permission === 'granted') {
-              new Notification('⚠️ Still Lagging Behind', {
-                body: `${laggingUser.name} is still ${distance}m away from the group!`
-              });
-            }
-          }
-        }
-      }, 15000);
+        
+        showDemoNotification('📍 Member Lagging Behind', `${laggingUser.name} is ${distance}m away from the group!`);
+      }, 4000));
 
-      // Simulate movement every 5 seconds
+      // 8s: Second lagging alert (4 seconds after first)
+      timeouts.push(setTimeout(() => {
+        setDemoPhase(2);
+        const laggingUser = demoUserTemplates.find(u => u.lagging);
+        const userId = `demo_${demoUserTemplates.indexOf(laggingUser)}`;
+        const distance = 920;
+        
+        if (onTriggerLaggingAlert) {
+          onTriggerLaggingAlert({
+            type: 'lagging',
+            userId: userId,
+            name: laggingUser.name,
+            distance: distance,
+            maxDistance: 500,
+            location: { lat: baseLocation.lat - 0.04, lng: baseLocation.lng - 0.04 },
+            timestamp: Date.now(),
+            message: `⚠️ ${laggingUser.name} is still ${distance}m away from the group!`,
+            acknowledged: {}
+          });
+        }
+        
+        showDemoNotification('⚠️ Still Lagging Behind', `${laggingUser.name} is now ${distance}m away!`);
+      }, 8000));
+
+      // 12s: Chat message from Saurav
+      timeouts.push(setTimeout(() => {
+        setDemoPhase(3);
+        // Send actual chat message (this will trigger chat notification)
+        if (window.sendDemoChatMessage) {
+          window.sendDemoChatMessage({
+            userId: 'demo_0',
+            name: 'Saurav Thakur',
+            message: 'Hey everyone, where are you?',
+            timestamp: Date.now()
+          });
+        }
+        showDemoNotification('💬 New Message', 'Saurav Thakur: Hey everyone, where are you?');
+      }, 12000));
+
+      // 16s: Emergency alert from Jiya
+      timeouts.push(setTimeout(() => {
+        setDemoPhase(4);
+        if (onTriggerLaggingAlert) {
+          onTriggerLaggingAlert({
+            type: 'emergency',
+            userId: 'demo_2',
+            name: 'Jiya Gupta',
+            location: { lat: baseLocation.lat + 0.015, lng: baseLocation.lng + 0.015 },
+            timestamp: Date.now(),
+            message: '🚨 Jiya Gupta needs immediate help!',
+            acknowledged: {}
+          });
+        }
+        
+        showDemoNotification('🚨 EMERGENCY ALERT!', 'Jiya Gupta needs immediate help!');
+      }, 16000));
+
+      // Movement simulation every 2 seconds
       const interval = setInterval(() => {
         const baseLocation = getBaseLocation();
         
@@ -170,34 +195,27 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
             const currentPos = updated[userId];
             
             if (currentPos) {
-              // Normal users move around the current user
               if (!template.lagging) {
-                // Circular movement around user
-                currentPos.direction += 0.1;
-                const radius = 0.008; // Larger radius for better visibility
+                // Normal users move around user
+                currentPos.direction += 0.2;
+                const radius = 0.01;
                 updated[userId] = {
                   ...currentPos,
                   lat: baseLocation.lat + Math.cos(currentPos.direction) * radius,
                   lng: baseLocation.lng + Math.sin(currentPos.direction) * radius
                 };
               } else {
-                // Lagging user moves slowly away
+                // Apurva moves away (lagging)
                 const awayDirection = Math.atan2(
                   currentPos.lat - baseLocation.lat,
                   currentPos.lng - baseLocation.lng
                 );
                 updated[userId] = {
                   ...currentPos,
-                  lat: currentPos.lat + Math.cos(awayDirection) * template.speed,
-                  lng: currentPos.lng + Math.sin(awayDirection) * template.speed
+                  lat: currentPos.lat + Math.cos(awayDirection) * 0.003,
+                  lng: currentPos.lng + Math.sin(awayDirection) * 0.003
                 };
               }
-              
-              // Update user in the system with stable battery
-              const currentBattery = demoBatteries[userId] || (template.lagging ? 25 : 85);
-              const newBattery = Math.max(5, currentBattery - 0.1); // Slowly decrease battery
-              
-              setDemoBatteries(prev => ({ ...prev, [userId]: newBattery }));
               
               const updatedUser = {
                 ...template,
@@ -205,8 +223,9 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
                 lat: updated[userId].lat,
                 lng: updated[userId].lng,
                 timestamp: Date.now(),
-                battery: Math.round(newBattery),
-                accuracy: Math.floor(Math.random() * 50) + 10
+                battery: template.lagging ? 18 : 85,
+                accuracy: Math.floor(Math.random() * 30) + 5,
+                emergency: demoPhase >= 4 && userId === 'demo_2' // Emergency for Jiya
               };
               onAddDemoUser(updatedUser);
             }
@@ -214,13 +233,11 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
           
           return updated;
         });
-      }, 5000);
+      }, 2000);
 
       return () => {
         clearInterval(interval);
-        clearTimeout(emergencyTimeout);
-        clearTimeout(alertTimeout);
-        clearTimeout(alertTimeout2);
+        timeouts.forEach(timeout => clearTimeout(timeout));
       };
     } else {
       // Remove all demo users
@@ -230,6 +247,7 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
       setDemoPositions({});
       setAlertTriggered(false);
       setDemoBatteries({});
+      setDemoPhase(0);
     }
   }, [isEnabled, currentUserLocation]);
 
@@ -249,11 +267,32 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, demoUsers, currentUserLocat
       
       {isEnabled && (
         <div className="demo-info">
-          <p>Demo users moving around you. Apurva is lagging behind!</p>
-          <div className="demo-stats">
-            <span>Active Demo Users: {Object.keys(demoUsers || {}).length}</span>
-            <span>• 1 Lagging Member</span>
+          <div className="demo-timeline">
+            <div className="timeline-item">
+              <span className={`phase ${demoPhase >= 1 ? 'completed' : ''}`}>📍 Lag 1</span>
+            </div>
+            <div className="timeline-item">
+              <span className={`phase ${demoPhase >= 2 ? 'completed' : ''}`}>📍 Lag 2</span>
+            </div>
+            <div className="timeline-item">
+              <span className={`phase ${demoPhase >= 3 ? 'completed' : ''}`}>💬 Chat</span>
+            </div>
+            <div className="timeline-item">
+              <span className={`phase ${demoPhase >= 4 ? 'completed' : ''}`}>🚨 Emergency</span>
+            </div>
           </div>
+          <div className="demo-stats">
+            <span>Demo Users: {Object.keys(demoUsers || {}).length}</span>
+            <span>• Phase: {demoPhase}/7</span>
+            <span>• Notifications: {notificationPermission}</span>
+          </div>
+          <p className="demo-description">
+            {demoPhase === 0 && "🚀 Demo users moving around you..."}
+            {demoPhase === 1 && "📍 Apurva is lagging behind!"}
+            {demoPhase === 2 && "📍 Apurva still lagging!"}
+            {demoPhase === 3 && "💬 Saurav sent a message!"}
+            {demoPhase === 4 && "🚨 Jiya needs help!"}
+          </p>
         </div>
       )}
     </div>

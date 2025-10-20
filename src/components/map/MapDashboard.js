@@ -7,7 +7,7 @@ import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
 import SimpleMembersPanel from '../panels/SimpleMembersPanel';
-import DemoMode from '../utils/DemoMode';
+import DemoMode from '../DemoMode';
 import UserProfile from '../profile/UserProfile';
 import PrivacySettings from '../privacy/PrivacySettings';
 import './MapDashboard.css';
@@ -824,6 +824,17 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     setCurrentGroup(initialGroup);
   }, [initialGroup]);
 
+  // Demo chat message handler
+  useEffect(() => {
+    window.sendDemoChatMessage = (message) => {
+      setMessages(prev => [...prev, message]);
+    };
+    
+    return () => {
+      delete window.sendDemoChatMessage;
+    };
+  }, []);
+
   // Close profile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1238,6 +1249,15 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             onTriggerLaggingAlert={(alert) => {
               console.log('Received lagging alert:', alert);
               const alertWithId = { ...alert, id: `demo_alert_${Date.now()}` };
+              
+              // Show browser notification
+              if (Notification.permission === 'granted') {
+                new Notification('📍 Member Lagging Behind', {
+                  body: alert.message,
+                  requireInteraction: true
+                });
+              }
+              
               setEmergencyAlerts(prev => {
                 // Check if similar alert already exists to prevent duplicates
                 const existingAlert = prev.find(a => 
