@@ -89,6 +89,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [activeNotifications, setActiveNotifications] = useState([]);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState(new Set());
   const [notifiedRequests, setNotifiedRequests] = useState(new Set());
+  const [notifiedApprovals, setNotifiedApprovals] = useState(new Set());
   const [emergencyIntervals, setEmergencyIntervals] = useState({});
   const [locationHistory, setLocationHistory] = useState([]);
   const [batteryLevel, setBatteryLevel] = useState(100);
@@ -102,6 +103,20 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const mapRef = useRef(null);
   const watchIdRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const emergencyAlertsRef = useRef([]);
+  const emergencyIntervalsRef = useRef({});
+  const notificationActiveRef = useRef(false);
+  
+  // Global function to stop all emergency notifications
+  window.stopAllEmergencyNotifications = () => {
+    console.log('STOPPING ALL emergency notifications');
+    Object.values(emergencyIntervalsRef.current).forEach(intervalId => {
+      clearInterval(intervalId);
+    });
+    emergencyIntervalsRef.current = {};
+    notificationActiveRef.current = false;
+    setEmergencyIntervals({});
+  };
   
   const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#8844ff'];
   
@@ -260,29 +275,51 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             const requests = Object.entries(snapshot.val())
               .map(([id, request]) => ({ id, ...request }))
               .filter(request => request.status === 'pending');
-            setMemberRequests(requests);
             
-            // Show notification for new requests
-            requests.forEach(request => {
+            // Check for new requests
+            const newRequests = requests.filter(request => {
               const requestKey = `new_request_${request.id}`;
-              if (!notifiedRequests.has(requestKey)) {
-                showNotification('👥 New Member Request', `${request.name} wants to join the group`);
-                setNotifiedRequests(prev => new Set([...prev, requestKey]));
-              }
+              return !notifiedRequests.has(requestKey);
             });
+            
+            // Show notifications for new requests only (once)
+            newRequests.forEach(request => {
+              const requestKey = `new_request_${request.id}`;
+              if (Notification.permission === 'granted') {
+                new Notification('👥 New Member Request', {
+                  body: `${request.name} wants to join the group`,
+                  tag: requestKey,
+                  requireInteraction: true
+                });
+              }
+              setNotifiedRequests(prev => new Set([...prev, requestKey]));
+            });
+            
+            setMemberRequests(requests);
           } else {
             setMemberRequests([]);
           }
         });
       }
       
-      // Subscribe to notifications
+      // Subscribe to notifications for all users
       unsubscribeNotifications = subscribeToNotifications(currentGroup, user.uid, (snapshot) => {
         const notifications = snapshot.val();
         if (notifications && Array.isArray(notifications)) {
           notifications.forEach(notif => {
-            if (notif.timestamp > (Date.now() - 60000)) { // Only show recent notifications
-              showNotification(notif.title, notif.message);
+            // Show browser notification for request approvals (once only)
+            if (notif.type === 'request_approved' && notif.userId === user.uid) {
+              const approvalKey = `approval_${notif.timestamp}`;
+              if (!notifiedApprovals.has(approvalKey)) {
+                console.log('✅ Showing approval notification for user');
+                if (Notification.permission === 'granted') {
+                  new Notification('✅ Request Approved', {
+                    body: `Welcome! Your request to join ${currentGroup} has been approved.`,
+                    requireInteraction: true
+                  });
+                }
+                setNotifiedApprovals(prev => new Set([...prev, approvalKey]));
+              }
             }
           });
         }
@@ -335,46 +372,38 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             return acknowledgedCount < totalMembers;
           });
           
-          const newAlerts = activeAlerts.filter(alert => 
-            !emergencyAlerts.some(existing => existing.timestamp === alert.timestamp)
-          );
-          
           setEmergencyAlerts(activeAlerts);
+          emergencyAlertsRef.current = activeAlerts;
           
-          // Show notifications for new alerts (only if not acknowledged by current user)
-          newAlerts.forEach(alert => {
+          // Show notifications for ALL alerts immediately
+          activeAlerts.forEach(alert => {
             const isAlreadyAcknowledged = alert.acknowledged && alert.acknowledged[user.uid];
-            const alertKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`;
+            const alertKey = `${alert.type}-${alert.userId}-${alert.timestamp}`;
             
             if (!isAlreadyAcknowledged && !acknowledgedAlerts.has(alertKey)) {
-              if (adminSettings.realNotifications && Notification.permission === 'granted') {
-                // Start repetitive notifications for emergency alerts
-                if (alert.type === 'emergency' || !alert.type) {
-                  startRepetitiveEmergencyNotification(alert);
-                } else {
-                  // Handle different alert types
-                  let title, body;
-                  if (alert.type === 'low_battery') {
-                    title = '🔋 Low Battery Alert';
-                    body = alert.message;
-                  } else {
-                    title = '📍 Member Lagging Behind';
-                    body = alert.message;
-                  }
-                  
-                  const notification = new Notification(title, { 
-                    body: body,
-                    tag: `${alert.type}-${alert.userId}`,
-                    requireInteraction: true
-                  });
-                  
-                  notification.onclick = () => {
-                    handleAcknowledgeAlert(alert, alert.id);
-                    notification.close();
-                  };
-                }
+              console.log('Processing new alert for user:', user.uid, alert);
+              
+              // Start repetitive notifications for ALL alert types
+              let title, body;
+              if (alert.type === 'emergency' || !alert.type) {
+                title = '🚨 EMERGENCY ALERT!';
+                body = alert.message || `${alert.name} needs immediate help!`;
+              } else if (alert.type === 'low_battery') {
+                title = '🔋 Low Battery Alert';
+                body = alert.message;
+              } else {
+                title = '📍 Member Lagging Behind';
+                body = alert.message;
               }
-              console.log('New alert added:', alert);
+              
+              console.log('Starting repetitive notifications for:', title);
+              startRepetitiveEmergencyNotification({
+                ...alert,
+                title: title,
+                message: body
+              });
+              
+              setAcknowledgedAlerts(prev => new Set([...prev, alertKey]));
             }
           });
         }
@@ -571,56 +600,65 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   };
   
   const startRepetitiveEmergencyNotification = (alert) => {
+    console.log('Starting repetitive notifications for alert:', alert);
+    
+    // Prevent multiple notification intervals
+    if (notificationActiveRef.current) {
+      console.log('Notifications already active, skipping');
+      return;
+    }
+    
+    notificationActiveRef.current = true;
     const alertKey = `${alert.userId}-${alert.timestamp}`;
     
     // Clear any existing interval for this alert
-    if (emergencyIntervals[alertKey]) {
-      clearInterval(emergencyIntervals[alertKey]);
+    if (emergencyIntervalsRef.current[alertKey]) {
+      console.log('Clearing existing interval for:', alertKey);
+      clearInterval(emergencyIntervalsRef.current[alertKey]);
     }
     
-    const showNotification = () => {
-      const notification = new Notification('🚨 EMERGENCY ALERT!', {
-        body: alert.message || `${alert.name} needs immediate help!`,
-        tag: `emergency-${alert.userId}`,
-        requireInteraction: true,
-        icon: '/favicon.ico'
-      });
-      
-      notification.onclick = () => {
-        handleAcknowledgeAlert(alert, alert.id);
-        notification.close();
-      };
-      
-      // Auto-close after 5 seconds and show again
-      setTimeout(() => {
-        if (!notification.closed) {
+    const stopNotifications = () => {
+      console.log('STOPPING notifications for:', alertKey);
+      if (emergencyIntervalsRef.current[alertKey]) {
+        clearInterval(emergencyIntervalsRef.current[alertKey]);
+        delete emergencyIntervalsRef.current[alertKey];
+        console.log('Interval cleared and deleted');
+      }
+    };
+    
+    const showNotif = () => {
+      if (Notification.permission === 'granted') {
+        const notification = new Notification(alert.title || '🚨 EMERGENCY ALERT!', {
+          body: alert.message || `${alert.name} needs immediate help!`,
+          requireInteraction: true,
+          icon: '/favicon.ico'
+        });
+        
+        notification.onclick = () => {
+          console.log('Notification clicked - stopping ALL');
+          window.stopAllEmergencyNotifications();
           notification.close();
-        }
-      }, 5000);
+        };
+        notification.onclose = () => {
+          console.log('Notification closed - stopping ALL');
+          window.stopAllEmergencyNotifications();
+        };
+      }
     };
     
     // Show first notification immediately
-    showNotification();
+    showNotif();
     
-    // Set up repetitive notifications every 4 seconds
+    // Simple interval that just shows notifications every 3 seconds
     const intervalId = setInterval(() => {
-      const isStillActive = emergencyAlerts.some(a => a.id === alert.id);
-      const isAcknowledged = alert.acknowledged && alert.acknowledged[user.uid];
-      
-      if (!isStillActive || isAcknowledged) {
-        clearInterval(intervalId);
-        setEmergencyIntervals(prev => {
-          const updated = { ...prev };
-          delete updated[alertKey];
-          return updated;
-        });
-        return;
-      }
-      
-      showNotification();
-    }, 4000); // Repeat every 4 seconds
+      console.log('Interval firing for alert:', alert.title);
+      showNotif();
+    }, 3000);
+    
+    console.log('Created interval with ID:', intervalId);
     
     // Store interval reference
+    emergencyIntervalsRef.current[alertKey] = intervalId;
     setEmergencyIntervals(prev => ({
       ...prev,
       [alertKey]: intervalId
@@ -631,8 +669,11 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     try {
       // Stop repetitive notifications
       const alertKey = `${alert.userId}-${alert.timestamp}`;
-      if (emergencyIntervals[alertKey]) {
-        clearInterval(emergencyIntervals[alertKey]);
+      console.log('Acknowledging alert:', alertKey);
+      if (emergencyIntervalsRef.current[alertKey]) {
+        clearInterval(emergencyIntervalsRef.current[alertKey]);
+        delete emergencyIntervalsRef.current[alertKey];
+        console.log('Cleared interval in handleAcknowledgeAlert');
         setEmergencyIntervals(prev => {
           const updated = { ...prev };
           delete updated[alertKey];
@@ -646,7 +687,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       }
       
       // Mark alert as acknowledged
-      const ackKey = `${alert.type}-${alert.userId}-${Math.floor(alert.timestamp / 60000)}`;
+      const ackKey = `${alert.userId}-${alert.timestamp}`;
       setAcknowledgedAlerts(prev => new Set([...prev, ackKey]));
       
       // For demo alerts, remove directly from state
@@ -737,7 +778,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           role: 'member'
         });
         
-        // Send notification to the approved user
+        // Send notification to Firebase for the approved user
         await sendNotification(currentGroup, {
           type: 'request_approved',
           userId: request.userId,
@@ -1398,7 +1439,19 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                     <div className="alert-actions">
                       {!isAcknowledged && (
                         <button 
-                          onClick={() => handleAcknowledgeAlert(alert, alert.id)}
+                          onClick={() => {
+                            // Stop repetitive notifications immediately
+                            const alertKey = `${alert.userId}-${alert.timestamp}`;
+                            if (emergencyIntervals[alertKey]) {
+                              clearInterval(emergencyIntervals[alertKey]);
+                              setEmergencyIntervals(prev => {
+                                const updated = { ...prev };
+                                delete updated[alertKey];
+                                return updated;
+                              });
+                            }
+                            handleAcknowledgeAlert(alert, alert.id);
+                          }}
                           className="ack-btn"
                         >
                           ✓ Got it
@@ -1464,6 +1517,8 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           onClose={() => setShowPrivacySettings(false)}
         />
       )}
+      
+
     </div>
   );
 };

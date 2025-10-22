@@ -3,9 +3,9 @@ import { sendMemberRequest, getGroupIdByCode } from '../../firebase/location';
 import { useAuth } from '../../contexts/AuthContext';
 import './JoinGroup.css';
 
-const JoinGroup = ({ onJoinSuccess, onCancel }) => {
+const JoinGroup = ({ groupCode: initialGroupCode = '', onJoinSuccess, onCancel }) => {
   const { user } = useAuth();
-  const [groupCode, setGroupCode] = useState('');
+  const [groupCode, setGroupCode] = useState(initialGroupCode);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -38,9 +38,10 @@ const JoinGroup = ({ onJoinSuccess, onCancel }) => {
       });
 
       setRequestSent(true);
+      // Show success message for 3 seconds then call success callback
       setTimeout(() => {
         if (onJoinSuccess) onJoinSuccess();
-      }, 2000);
+      }, 3000);
 
     } catch (error) {
       console.error('Error sending request:', error);

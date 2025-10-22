@@ -220,23 +220,7 @@ const SimpleMembersPanel = ({ members, currentUser, onMemberClick, onSendMessage
                   </div>
                 </div>
               </div>
-              {member.lat && member.lng && (
-                <div className="member-location">
-                  {isCurrentUser && myAddress ? (
-                    <span className="location-address">
-                      📍 {myAddress}
-                    </span>
-                  ) : memberAddresses && memberAddresses[userId] ? (
-                    <span className="location-address">
-                      📍 {memberAddresses[userId]}
-                    </span>
-                  ) : (
-                    <span className="location-coords">
-                      📍 {member.lat.toFixed(4)}, {member.lng.toFixed(4)}
-                    </span>
-                  )}
-                </div>
-              )}
+
             </div>
           );
         })}

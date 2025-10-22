@@ -21,18 +21,27 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, curr
     onAddDemoUser({ id: 'demo_2', name: 'Jiya', lat: base.lat + 0.002, lng: base.lng - 0.002, battery: 90, timestamp: Date.now(), accuracy: 15 });
     onAddDemoUser({ id: 'demo_3', name: 'Apurva', lat: base.lat - 0.003, lng: base.lng - 0.003, battery: 25, timestamp: Date.now(), accuracy: 15 });
 
-    // Request notification permission first
+    // Force notification permission
     if (Notification.permission === 'default') {
-      Notification.requestPermission();
+      Notification.requestPermission().then(permission => {
+        console.log('Notification permission:', permission);
+      });
     }
 
     // First notification at 4 seconds - 650m
     setTimeout(() => {
-      if (Notification.permission === 'granted') {
+      console.log('Triggering first demo alert');
+      // Force show notification
+      try {
         new Notification('📍 Member Lagging Behind', {
-          body: 'Apurva is 650m away from the group (limit: 500m)'
+          body: 'Apurva is 650m away from the group (limit: 500m)',
+          requireInteraction: true
         });
+      } catch (e) {
+        console.log('Notification failed:', e);
+        alert('🚨 DEMO ALERT: Apurva is 650m away!');
       }
+      
       onTriggerLaggingAlert({
         type: 'lagging',
         userId: 'demo_3',
@@ -45,13 +54,19 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, curr
       });
     }, 4000);
 
-    // Second notification 4 seconds after first (at 8 seconds total)
+    // Second notification at 8 seconds
     setTimeout(() => {
-      if (Notification.permission === 'granted') {
+      console.log('Triggering second demo alert');
+      try {
         new Notification('📍 Member Lagging Behind', {
-          body: 'Apurva is now 850m away from the group (limit: 500m)'
+          body: 'Apurva is now 850m away from the group (limit: 500m)',
+          requireInteraction: true
         });
+      } catch (e) {
+        console.log('Notification failed:', e);
+        alert('🚨 DEMO ALERT: Apurva is now 850m away!');
       }
+      
       onTriggerLaggingAlert({
         type: 'lagging',
         userId: 'demo_3',
@@ -62,7 +77,7 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, curr
         message: 'Apurva is now 850m away from the group (limit: 500m)',
         acknowledged: {}
       });
-    }, 20000);
+    }, 8000);
 
     // Move users every 2 seconds
     let moveCount = 0;

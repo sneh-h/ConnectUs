@@ -25,6 +25,7 @@ const Dashboard = () => {
   const [expandedCard, setExpandedCard] = useState(null);
   const [showJoinRequest, setShowJoinRequest] = useState(false);
   const [groupData, setGroupData] = useState(null);
+  const [pendingRequests, setPendingRequests] = useState([]);
 
   // Load user's existing groups on component mount
   useEffect(() => {
@@ -63,6 +64,48 @@ const Dashboard = () => {
     
     loadUserGroups();
   }, [user]);
+
+  // Listen for approval notifications when not in a group
+  useEffect(() => {
+    if (!currentGroup && user) {
+      const checkApprovals = async () => {
+        try {
+          const { get, ref } = await import('firebase/database');
+          const groupsRef = ref(realtimeDb, 'groups');
+          const snapshot = await get(groupsRef);
+          
+          if (snapshot.exists()) {
+            snapshot.forEach(groupSnapshot => {
+              const groupData = groupSnapshot.val();
+              const groupId = groupSnapshot.key;
+              
+              // Check if user was added to any group
+              if (groupData.members && groupData.members[user.uid]) {
+                const member = groupData.members[user.uid];
+                if (member.joinedAt && member.joinedAt > (Date.now() - 60000)) {
+                  // Recently added - show notification
+                  if (Notification.permission === 'granted') {
+                    new Notification('✅ Request Approved', {
+                      body: `Welcome! Your request to join ${groupData.name || groupId} has been approved.`,
+                      requireInteraction: true
+                    });
+                  }
+                  // Auto-join the group
+                  setCurrentGroup(groupId);
+                  localStorage.setItem('currentGroup', groupId);
+                }
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Error checking approvals:', error);
+        }
+      };
+      
+      const interval = setInterval(checkApprovals, 5000); // Check every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [currentGroup, user]);
 
   useEffect(() => {
     let unsubscribe = null;
@@ -359,7 +402,33 @@ const Dashboard = () => {
               </div>
               
               <button 
-                onClick={() => setShowJoinRequest(true)} 
+                onClick={async () => {
+                  if (!groupId.trim()) {
+                    alert('Please enter a group code first');
+                    return;
+                  }
+                  
+                  try {
+                    const { sendMemberRequest, getGroupIdByCode } = await import('../../firebase/location');
+                    const actualGroupId = await getGroupIdByCode(groupId.trim());
+                    if (!actualGroupId) {
+                      alert('Group not found');
+                      return;
+                    }
+                    
+                    await sendMemberRequest(actualGroupId, {
+                      userId: user.uid,
+                      name: user.email.split('@')[0],
+                      email: user.email,
+                      message: 'Please add me to the group'
+                    });
+                    
+                    alert('✅ Join request sent! Admin will be notified.');
+                    setGroupId('');
+                  } catch (error) {
+                    alert('❌ Error: ' + error.message);
+                  }
+                }} 
                 className="option-btn join-btn"
               >
                 <span className="btn-icon">🚀</span>
@@ -630,9 +699,11 @@ const Dashboard = () => {
         {/* Join Request Modal */}
         {showJoinRequest && (
           <JoinGroup 
+            groupCode={groupId}
             onJoinSuccess={() => {
               setShowJoinRequest(false);
-              // Optionally refresh groups or show success message
+              setGroupId('');
+              alert('Join request sent! You will be notified when approved.');
             }}
             onCancel={() => setShowJoinRequest(false)}
           />
