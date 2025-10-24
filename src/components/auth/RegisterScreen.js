@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../firebase';
+import './Login.css';
 
 const RegisterScreen = () => {
   const [formData, setFormData] = useState({
@@ -112,12 +113,12 @@ const RegisterScreen = () => {
         </div>
 
         <form onSubmit={handleRegister} className="auth-form">
-          <div className="tactical-input-group">
-            <label className="tactical-label">
-              <span className="label-bracket">▷ </span>
+          <div className="input-container">
+            <label className="input-label">
+              <span className="input-bracket">▷ </span>
               FULL NAME
             </label>
-            <div className="tactical-input-wrapper">
+            <div className="input-wrapper">
               <span className="input-icon">👤</span>
               <input
                 type="text"
@@ -125,18 +126,18 @@ const RegisterScreen = () => {
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="Enter your full name"
-                className="tactical-input"
+                className="auth-input"
                 required
               />
             </div>
           </div>
 
-          <div className="tactical-input-group">
-            <label className="tactical-label">
-              <span className="label-bracket">▷ </span>
+          <div className="input-container">
+            <label className="input-label">
+              <span className="input-bracket">▷ </span>
               EMAIL ADDRESS
             </label>
-            <div className="tactical-input-wrapper">
+            <div className="input-wrapper">
               <span className="input-icon">📧</span>
               <input
                 type="email"
@@ -144,18 +145,18 @@ const RegisterScreen = () => {
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="your@email.com"
-                className="tactical-input"
+                className="auth-input"
                 required
               />
             </div>
           </div>
 
-          <div className="tactical-input-group">
-            <label className="tactical-label">
-              <span className="label-bracket">▷ </span>
+          <div className="input-container">
+            <label className="input-label">
+              <span className="input-bracket">▷ </span>
               PASSWORD
             </label>
-            <div className="tactical-input-wrapper">
+            <div className="input-wrapper">
               <span className="input-icon">🔒</span>
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -163,7 +164,7 @@ const RegisterScreen = () => {
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="Create a password"
-                className="tactical-input"
+                className="auth-input"
                 required
               />
               <button
@@ -176,12 +177,12 @@ const RegisterScreen = () => {
             </div>
           </div>
 
-          <div className="tactical-input-group">
-            <label className="tactical-label">
-              <span className="label-bracket">▷ </span>
+          <div className="input-container">
+            <label className="input-label">
+              <span className="input-bracket">▷ </span>
               CONFIRM PASSWORD
             </label>
-            <div className="tactical-input-wrapper">
+            <div className="input-wrapper">
               <span className="input-icon">🔐</span>
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -189,7 +190,7 @@ const RegisterScreen = () => {
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 placeholder="Confirm your password"
-                className="tactical-input"
+                className="auth-input"
                 required
               />
             </div>
@@ -214,7 +215,7 @@ const RegisterScreen = () => {
 
         <div className="auth-footer">
           <span className="footer-text">Already have an account? </span>
-          <Link to="/login" className="auth-link">Login</Link>
+          <Link to="/login" className="link-text">Login</Link>
         </div>
       </div>
     </div>

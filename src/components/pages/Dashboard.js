@@ -10,7 +10,7 @@ import './Dashboard.css';
 const Dashboard = () => {
   const { user } = useAuth();
   const [groupId, setGroupId] = useState('');
-  const [currentGroup, setCurrentGroup] = useState(() => localStorage.getItem('currentGroup') || null);
+  const [currentGroup, setCurrentGroup] = useState(null);
   const [groupMembers, setGroupMembers] = useState({});
   const [myLocation, setMyLocation] = useState(null);
   const [isTracking, setIsTracking] = useState(() => localStorage.getItem('isTracking') === 'true');
@@ -27,10 +27,16 @@ const Dashboard = () => {
   const [groupData, setGroupData] = useState(null);
   const [pendingRequests, setPendingRequests] = useState([]);
 
-  // Load user's existing groups on component mount
+  // Load user's existing groups and current group on component mount
   useEffect(() => {
     const loadUserGroups = async () => {
       if (!user) return;
+      
+      // Load current group from localStorage only for verified users
+      const savedGroup = localStorage.getItem('currentGroup');
+      if (savedGroup) {
+        setCurrentGroup(savedGroup);
+      }
       
       try {
         setLoadingGroups(true);
@@ -83,16 +89,33 @@ const Dashboard = () => {
               if (groupData.members && groupData.members[user.uid]) {
                 const member = groupData.members[user.uid];
                 if (member.joinedAt && member.joinedAt > (Date.now() - 60000)) {
-                  // Recently added - show notification
+                  // Recently added - show notification only, don't auto-join
                   if (Notification.permission === 'granted') {
                     new Notification('✅ Request Approved', {
-                      body: `Welcome! Your request to join ${groupData.name || groupId} has been approved.`,
+                      body: `Welcome! Your request to join ${groupData.name || groupId} has been approved. Check your groups list.`,
                       requireInteraction: true
                     });
                   }
-                  // Auto-join the group
-                  setCurrentGroup(groupId);
-                  localStorage.setItem('currentGroup', groupId);
+                  // Refresh user groups list instead of auto-joining
+                  const loadUserGroups = async () => {
+                    const groupsRef = ref(realtimeDb, 'groups');
+                    const snapshot = await get(groupsRef);
+                    
+                    if (snapshot.exists()) {
+                      const groups = [];
+                      snapshot.forEach(childSnapshot => {
+                        const groupData = childSnapshot.val();
+                        if (groupData.members && groupData.members[user.uid]) {
+                          groups.push({
+                            id: childSnapshot.key,
+                            ...groupData
+                          });
+                        }
+                      });
+                      setUserGroups(groups);
+                    }
+                  };
+                  loadUserGroups();
                 }
               }
             });
@@ -155,69 +178,7 @@ const Dashboard = () => {
 
 
 
-  const handleJoinGroup = async () => {
-    if (!groupId.trim() || !user) return;
-    
-    console.log('Starting join process with code:', groupId);
-    
-    try {
-      // Get group ID by code
-      const actualGroupId = await getGroupIdByCode(groupId);
-      if (!actualGroupId) {
-        alert('Group code not found. Please check the code and try again.');
-        return;
-      }
-      
-      // Check if user is the group creator by email
-      const { get, ref } = await import('firebase/database');
-      const groupRef = ref(realtimeDb, `groups/${actualGroupId}`);
-      const groupSnapshot = await get(groupRef);
-      
-      console.log('Group lookup:', { actualGroupId, exists: groupSnapshot.exists() });
-      
-      let isCreator = false;
-      if (groupSnapshot.exists()) {
-        const groupData = groupSnapshot.val();
-        console.log('Full group data:', groupData);
-        isCreator = groupData.creator === user.uid || groupData.creatorEmail === user.email;
-        console.log('Creator check:', {
-          groupCreator: groupData.creator,
-          groupCreatorEmail: groupData.creatorEmail,
-          currentUserId: user.uid,
-          currentUserEmail: user.email,
-          isCreator
-        });
-      } else {
-        console.log('Group not found!');
-      }
-      
-      // Check if already a member with admin role
-      const memberRef = ref(realtimeDb, `groups/${actualGroupId}/members/${user.uid}`);
-      const memberSnapshot = await get(memberRef);
-      
-      let role = 'member';
-      if (memberSnapshot.exists()) {
-        // Already a member, keep existing role
-        role = memberSnapshot.val().role || 'member';
-      } else if (isCreator) {
-        // New member who is creator
-        role = 'admin';
-      }
-      
-      await joinGroup(actualGroupId, user.uid, {
-        name: user.email.split('@')[0],
-        email: user.email,
-        role: role,
-        joinedAt: Date.now()
-      });
-      setCurrentGroup(actualGroupId);
-      localStorage.setItem('currentGroup', actualGroupId);
-      setIsTracking(true);
-      localStorage.setItem('isTracking', 'true');
-    } catch (error) {
-      alert('Failed to join group: ' + error.message);
-    }
-  };
+
 
   const generateGroupCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

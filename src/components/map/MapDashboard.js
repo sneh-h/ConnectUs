@@ -57,6 +57,7 @@ const MapController = ({ mapRef, setFollowMode }) => {
 const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = false }) => {
   const { user } = useAuth();
   const [currentGroup, setCurrentGroup] = useState(initialGroup);
+  const [groupName, setGroupName] = useState('');
   const [groupMembers, setGroupMembers] = useState({});
   const [myLocation, setMyLocation] = useState(null);
   const [isTracking, setIsTracking] = useState(() => localStorage.getItem('isTracking') === 'true');
@@ -230,6 +231,22 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     let unsubscribeNotifications = null;
 
     if (currentGroup && user) {
+      // Fetch group name
+      const fetchGroupName = async () => {
+        try {
+          const { get, ref } = await import('firebase/database');
+          const groupRef = ref(realtimeDb, `groups/${currentGroup}`);
+          const snapshot = await get(groupRef);
+          if (snapshot.exists()) {
+            const groupData = snapshot.val();
+            setGroupName(groupData.name || currentGroup);
+          }
+        } catch (error) {
+          console.error('Error fetching group name:', error);
+          setGroupName(currentGroup);
+        }
+      };
+      fetchGroupName();
       // Subscribe to group locations
       unsubscribeLocations = subscribeToGroupLocations(currentGroup, async (snapshot) => {
         if (snapshot.exists()) {
@@ -459,7 +476,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               return newHistory;
             });
 
-            // Check for low battery
+            // Check for low battery - only send once
             if (batteryLevel <= 20 && !lowBatteryAlerts.has(user.uid)) {
               // Show browser notification for low battery
               if (Notification.permission === 'granted') {
@@ -500,11 +517,12 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             }
 
             updateUserLocation(user.uid, location);
+            // Update location without changing role
             updateGroupMemberLocation(currentGroup, user.uid, {
               ...location,
               name: user.email.split('@')[0],
-              email: user.email,
-              role: isAdmin ? 'admin' : 'member'
+              email: user.email
+              // Don't override role here - preserve existing role
             });
           },
           (error) => console.error('Location error:', error),
@@ -962,7 +980,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 )}
               </button>
             )}
-            <h1 className="group-title">{currentGroup}</h1>
+            <h1 className="group-title">{groupName || currentGroup}</h1>
           </div>
           <div className="member-count">{Object.keys(groupMembers).length} members</div>
         </div>
@@ -1320,7 +1338,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
         </div>
 
         {/* Side Panel */}
-        <div className="side-panel" style={{ width: '350px', overflowY: 'auto', maxHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="side-panel">
           {/* Demo Mode */}
           <DemoMode
             onAddDemoUser={(user) => {

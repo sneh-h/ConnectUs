@@ -9,9 +9,16 @@ export const updateUserLocation = (userId, location) => {
   });
 };
 
-export const updateGroupMemberLocation = (groupId, userId, location) => {
+export const updateGroupMemberLocation = async (groupId, userId, location) => {
   const memberRef = ref(realtimeDb, `groups/${groupId}/members/${userId}`);
+  
+  // Get existing member data to preserve role
+  const { get } = await import('firebase/database');
+  const snapshot = await get(memberRef);
+  const existingData = snapshot.exists() ? snapshot.val() : {};
+  
   return set(memberRef, {
+    ...existingData, // Preserve existing data including role
     ...location,
     timestamp: Date.now()
   });
@@ -119,10 +126,10 @@ export const approveMemberRequest = (groupId, requestId, userId, userInfo) => {
   const memberRef = ref(realtimeDb, `groups/${groupId}/members/${userId}`);
   const requestRef = ref(realtimeDb, `groups/${groupId}/memberRequests/${requestId}`);
   
-  // Add member to group
+  // Add member to group - ALWAYS as 'member', never admin
   set(memberRef, {
     ...userInfo,
-    role: 'member',
+    role: 'member', // Force member role for approved requests
     joinedAt: Date.now()
   });
   

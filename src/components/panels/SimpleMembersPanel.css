@@ -71,9 +71,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: none;
   overflow: visible;
-  flex: 1;
 }
 
 .member-item {
