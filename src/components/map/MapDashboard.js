@@ -348,12 +348,19 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           );
           
           // Show immediate notification for new messages
-          if (newMessages.length > 0 && Notification.permission === 'granted') {
-            const latestMsg = newMessages[newMessages.length - 1];
-            new Notification('💬 New Message', {
-              body: `${latestMsg.name}: ${latestMsg.message}`,
-              tag: 'chat-notification'
-            });
+          if (newMessages.length > 0) {
+            console.log('New messages detected:', newMessages.length);
+            console.log('Notification permission:', Notification.permission);
+            
+            if (Notification.permission === 'granted') {
+              const latestMsg = newMessages[newMessages.length - 1];
+              console.log('Creating notification for:', latestMsg.name, latestMsg.message);
+              
+              new Notification('💬 New Message', {
+                body: `${latestMsg.name}: ${latestMsg.message}`,
+                tag: 'chat-notification'
+              });
+            }
           }
           
           setMessages(msgs);
@@ -377,14 +384,26 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
 
           // Process emergency alerts
           activeAlerts.forEach(alert => {
-            if (alert.type === 'emergency' && alert.userId !== user.uid) {
+            if (alert.userId !== user.uid) {
               const alertKey = `${alert.userId}-${alert.timestamp}`;
 
               // Check if this alert is already being processed
               if (!acknowledgedAlertsRef.current.has(alertKey)) {
-                console.log('🚨 NEW EMERGENCY - Starting notifications for:', alert.name);
-                acknowledgedAlertsRef.current.add(alertKey);
-                startEmergencyNotifications(alert);
+                if (alert.type === 'emergency') {
+                  console.log('🚨 NEW EMERGENCY - Starting notifications for:', alert.name);
+                  acknowledgedAlertsRef.current.add(alertKey);
+                  startEmergencyNotifications(alert);
+                } else if (alert.type === 'low_battery') {
+                  console.log('🔋 LOW BATTERY - Showing notification for:', alert.name);
+                  acknowledgedAlertsRef.current.add(alertKey);
+                  if (Notification.permission === 'granted') {
+                    new Notification('🔋 Low Battery Alert', {
+                      body: `${alert.name}'s battery is at ${alert.battery}%. They may lose connection soon.`,
+                      icon: '/favicon.ico',
+                      requireInteraction: true
+                    });
+                  }
+                }
               }
             }
           });
@@ -450,6 +469,15 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
 
             // Check for low battery
             if (batteryLevel <= 20 && !lowBatteryAlerts.has(user.uid)) {
+              // Show browser notification for low battery
+              if (Notification.permission === 'granted') {
+                new Notification('🔋 Low Battery Warning', {
+                  body: `Your battery is at ${batteryLevel}%. Please charge your device to continue location tracking.`,
+                  icon: '/favicon.ico',
+                  requireInteraction: true
+                });
+              }
+              
               sendEmergencyAlert(currentGroup, {
                 type: 'low_battery',
                 userId: user.uid,
@@ -658,8 +686,10 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           body: `${alert.name} NEEDS IMMEDIATE HELP! Click to acknowledge.`,
           requireInteraction: true,
           tag: alertKey,
-          vibrate: [200, 100, 200],
-          icon: '/favicon.ico'
+          vibrate: [300, 200, 300, 200, 300],
+          icon: '/favicon.ico',
+          silent: false,
+          renotify: true
         });
 
         notification.onclick = () => {
