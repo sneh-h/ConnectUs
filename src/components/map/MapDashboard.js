@@ -893,19 +893,24 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   
   // Track unread messages since last chat open
   useEffect(() => {
+    console.log('Unread count update - showChat:', showChat, 'messages:', messages.length, 'user.uid:', user.uid);
+    
     if (showChat) {
       // When opening chat, update last seen timestamp and reset count
       if (messages.length > 0) {
         const latestTimestamp = Math.max(...messages.map(m => m.timestamp));
         lastSeenMessageRef.current = latestTimestamp;
+        console.log('Updated lastSeen timestamp:', latestTimestamp);
       }
       setUnreadMessages(0);
+      console.log('Chat open - unread count set to 0');
     } else {
       // When chat is closed, count messages from others since last seen
       const unreadCount = messages.filter(msg => 
         msg.userId !== user.uid && 
         msg.timestamp > lastSeenMessageRef.current
       ).length;
+      console.log('Chat closed - unread count:', unreadCount, 'lastSeen:', lastSeenMessageRef.current);
       setUnreadMessages(unreadCount);
     }
   }, [showChat, messages, user.uid]);
