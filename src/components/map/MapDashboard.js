@@ -112,6 +112,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const stopAllNotificationsRef = useRef(false);
   const chatNotificationRef = useRef(null);
   const acknowledgedAlertsRef = useRef(new Set());
+  const lastSeenMessageRef = useRef(Date.now());
 
   // Global emergency interval tracker
   window.emergencyIntervals = window.emergencyIntervals || {};
@@ -339,49 +340,22 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       unsubscribeMessages = subscribeToMessages(currentGroup, (snapshot) => {
         if (snapshot.exists()) {
           const msgs = Object.values(snapshot.val()).sort((a, b) => a.timestamp - b.timestamp);
-          // Find truly new messages by comparing with previous state
-          const previousMessageCount = messages.length;
-          const newMessageCount = msgs.length - previousMessageCount;
           
-          // Only process if there are actually new messages
-          if (newMessageCount > 0) {
-            const newMessages = msgs.slice(previousMessageCount).filter(msg => msg.userId !== user.uid);
-            
-            // Show notification for new messages from others
-            if (newMessages.length > 0 && Notification.permission === 'granted' && !showChat) {
-              const latestMsg = newMessages[newMessages.length - 1];
-
-              // Close previous chat notification
-              if (chatNotificationRef.current) {
-                try {
-                  chatNotificationRef.current.close();
-                } catch (e) { }
-              }
-
-              // Create new notification
-              const notification = new Notification('💬 New Message', {
-                body: newMessages.length === 1
-                  ? `${latestMsg.name}: ${latestMsg.message}`
-                  : `${newMessages.length} new messages`,
-                icon: '/favicon.ico',
-                tag: 'chat-notification'
-              });
-
-              notification.onclick = () => {
-                setShowChat(true);
-                setUnreadMessages(0);
-                notification.close();
-              };
-
-              chatNotificationRef.current = notification;
-            }
-
-            // Update unread count if chat is closed
-            if (!showChat && newMessages.length > 0) {
-              setUnreadMessages(prev => prev + newMessages.length);
-            }
+          // Find new messages from others since last seen
+          const newMessages = msgs.filter(msg => 
+            msg.userId !== user.uid && 
+            msg.timestamp > lastSeenMessageRef.current
+          );
+          
+          // Show immediate notification for new messages
+          if (newMessages.length > 0 && Notification.permission === 'granted') {
+            const latestMsg = newMessages[newMessages.length - 1];
+            new Notification('💬 New Message', {
+              body: `${latestMsg.name}: ${latestMsg.message}`,
+              tag: 'chat-notification'
+            });
           }
-
+          
           setMessages(msgs);
         }
       });
@@ -886,6 +860,25 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
     }
   }, [messages]);
+  
+  // Track unread messages since last chat open
+  useEffect(() => {
+    if (showChat) {
+      // When opening chat, update last seen timestamp and reset count
+      if (messages.length > 0) {
+        const latestTimestamp = Math.max(...messages.map(m => m.timestamp));
+        lastSeenMessageRef.current = latestTimestamp;
+      }
+      setUnreadMessages(0);
+    } else {
+      // When chat is closed, count messages from others since last seen
+      const unreadCount = messages.filter(msg => 
+        msg.userId !== user.uid && 
+        msg.timestamp > lastSeenMessageRef.current
+      ).length;
+      setUnreadMessages(unreadCount);
+    }
+  }, [showChat, messages, user.uid]);
 
   const getMemberIcon = (member, userId) => {
     if (userId === user.uid) return '🟢';
@@ -963,10 +956,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           </button>
 
           <button
-            onClick={() => {
-              setShowChat(!showChat);
-              if (!showChat) setUnreadMessages(0);
-            }}
+            onClick={() => setShowChat(!showChat)}
             className={`control-btn ${showChat ? 'active' : ''}`}
           >
             💬 Chat
@@ -1495,29 +1485,79 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       {showChat && (
         <div className="chat-panel">
           <div className="chat-header">
-            <h3>💬 Group Chat</h3>
-            <button onClick={() => setShowChat(false)} className="close-chat">✕</button>
+            <h3>💬 Group Chat ({Object.keys(groupMembers).length} members)</h3>
+            <div className="chat-controls">
+              <button 
+                onClick={() => {
+                  if (chatMessagesRef.current) {
+                    chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+                  }
+                }}
+                className="scroll-btn"
+                title="Scroll to bottom"
+              >
+                ↓
+              </button>
+              <button onClick={() => {
+                setShowChat(false);
+                setUnreadMessages(0);
+              }} className="close-chat">✕</button>
+            </div>
           </div>
+          
           <div className="chat-messages" ref={chatMessagesRef}>
-            {messages.map((msg, index) => (
-              <div key={index} className="chat-message">
-                <div className="message-sender" style={{ color: memberColors[msg.userId] || '#00ff88' }}>
-                  {msg.name}
-                </div>
-                <div className="message-text">{msg.message}</div>
-                <div className="message-time">{getTimeAgo(msg.timestamp)}</div>
+            {messages.length === 0 ? (
+              <div className="no-messages">
+                <p>💬 No messages yet</p>
+                <p>Start the conversation!</p>
               </div>
-            ))}
+            ) : (
+              messages.map((msg, index) => {
+                const isMyMessage = msg.userId === user.uid;
+                const memberColor = memberColors[msg.userId] || '#666';
+                
+                return (
+                  <div key={index} className={`chat-message ${isMyMessage ? 'my-message' : 'other-message'}`}>
+                    <div className="message-header">
+                      <span 
+                        className="message-sender" 
+                        style={{ color: isMyMessage ? '#00ff88' : memberColor }}
+                      >
+                        {isMyMessage ? 'You' : msg.name}
+                      </span>
+                      <span className="message-time">{getTimeAgo(msg.timestamp)}</span>
+                    </div>
+                    <div className="message-text">{msg.message}</div>
+                  </div>
+                );
+              })
+            )}
           </div>
+          
           <div className="chat-input">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
-              placeholder="Type a message..."
-            />
-            <button onClick={sendChatMessage}>Send</button>
+            <div className="input-row">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendChatMessage();
+                  }
+                }}
+                placeholder="Type a message... (Enter to send)"
+                maxLength={500}
+              />
+              <button 
+                onClick={sendChatMessage}
+                disabled={!newMessage.trim()}
+                className="send-btn"
+              >
+                Send
+              </button>
+            </div>
+
           </div>
         </div>
       )}
