@@ -116,12 +116,31 @@ const LandingPage = () => {
             <h3>Easy to Use</h3>
             <p>Simple setup with group codes. No complicated settings - just connect and go!</p>
           </div>
+          
+          <div className="feature-card">
+            <div className="feature-icon">🚨</div>
+            <h3>Emergency Alerts</h3>
+            <p>Instant SOS notifications with continuous alerts until acknowledged by all group members</p>
+          </div>
+          
+          <div className="feature-card">
+            <div className="feature-icon">💬</div>
+            <h3>Group Chat</h3>
+            <p>Built-in messaging with real-time notifications to stay connected with your group</p>
+          </div>
+          
+          <div className="feature-card">
+            <div className="feature-icon">🔋</div>
+            <h3>Battery Monitoring</h3>
+            <p>Automatic low battery alerts to ensure no one goes offline unexpectedly</p>
+          </div>
         </div>
 
         {/* Security Badge */}
         <div className="security-badge">
           <div className="security-icon">🔐</div>
           <p className="security-text">Your privacy matters. Location data is secure and only shared with your chosen groups.</p>
+          <p className="contact-text">Need help? Contact: <a href="mailto:singhsneha5084@gmail.com" className="contact-email">singhsneha5084@gmail.com</a></p>
           <p className="security-subtext">Made by Sneha Singh | © 2025 ConnectUs</p>
         </div>
       </div>

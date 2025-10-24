@@ -249,6 +249,7 @@
   flex-direction: column;
   overflow-y: auto;
   height: 100%;
+  padding: 0;
 }
 
 .side-panel::-webkit-scrollbar {
@@ -268,12 +269,13 @@
   background: rgba(0,255,136,0.6);
 }
 
+/* Firefox scrollbar */
 .side-panel {
   scrollbar-width: thin;
   scrollbar-color: rgba(0,255,136,0.3) transparent;
 }
 
-.members-panel, .status-panel {
+.status-panel {
   padding: 15px;
   border-bottom: 1px solid rgba(0, 255, 136, 0.2);
 }

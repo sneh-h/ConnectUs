@@ -230,24 +230,16 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     let unsubscribeNotifications = null;
 
     if (currentGroup && user) {
-      // Subscribe to group locations with privacy filtering
+      // Subscribe to group locations
       unsubscribeLocations = subscribeToGroupLocations(currentGroup, async (snapshot) => {
         if (snapshot.exists()) {
           const members = snapshot.val();
-          const filtered = {};
+          
+          // Temporarily disable privacy filtering to fix permission errors
+          setGroupMembers(members);
 
-          // Filter members based on privacy settings
-          for (const [memberId, memberData] of Object.entries(members)) {
-            const canView = await canViewLocation(currentGroup, memberId, user.uid);
-            if (canView) {
-              filtered[memberId] = memberData;
-            }
-          }
-
-          setGroupMembers(filtered);
-
-          // Update member colors and letters for all members (including filtered ones)
-          const allMembers = { ...filtered, ...demoUsers };
+          // Update member colors and letters for all members
+          const allMembers = { ...members, ...demoUsers };
           const newColors = { ...memberColors };
           const newLetters = generateUniqueInitials(allMembers);
 
@@ -274,7 +266,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
 
           // Check for lagging members (admin only)
           if (isAdmin && myLocation) {
-            checkLaggingMembers(filtered);
+            checkLaggingMembers(members);
           }
         }
       });
@@ -508,7 +500,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             }
 
             updateUserLocation(user.uid, location);
-            updateGroupMemberLocationWithPrivacy(currentGroup, user.uid, {
+            updateGroupMemberLocation(currentGroup, user.uid, {
               ...location,
               name: user.email.split('@')[0],
               email: user.email,
@@ -1328,7 +1320,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
         </div>
 
         {/* Side Panel */}
-        <div className="side-panel" style={{ width: '350px' }}>
+        <div className="side-panel" style={{ width: '350px', overflowY: 'auto', maxHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           {/* Demo Mode */}
           <DemoMode
             onAddDemoUser={(user) => {

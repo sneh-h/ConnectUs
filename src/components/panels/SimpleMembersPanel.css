@@ -1,3 +1,12 @@
+.simple-members-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: visible;
+  padding: 15px;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+}
+
 .simple-members-panel h3 {
   color: #f1f5f9;
   margin: 0 0 16px 0;
@@ -5,6 +14,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 .group-stats {
@@ -63,6 +73,7 @@
   gap: 4px;
   max-height: none;
   overflow: visible;
+  flex: 1;
 }
 
 .member-item {
