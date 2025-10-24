@@ -1522,17 +1522,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           <div className="chat-header">
             <h3>💬 Group Chat ({Object.keys(groupMembers).length} members)</h3>
             <div className="chat-controls">
-              <button 
-                onClick={() => {
-                  if (chatMessagesRef.current) {
-                    chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
-                  }
-                }}
-                className="scroll-btn"
-                title="Scroll to bottom"
-              >
-                ↓
-              </button>
               <button onClick={() => {
                 setShowChat(false);
                 setUnreadMessages(0);
@@ -1540,7 +1529,14 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             </div>
           </div>
           
-          <div className="chat-messages" ref={chatMessagesRef}>
+          <div className="chat-messages" ref={chatMessagesRef} style={{ 
+            maxHeight: '300px', 
+            overflowY: 'auto', 
+            padding: '10px', 
+            marginBottom: '10px',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#007bff #f1f1f1'
+          }}>
             {messages.length === 0 ? (
               <div className="no-messages">
                 <p>💬 No messages yet</p>
@@ -1570,7 +1566,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           </div>
           
           <div className="chat-input">
-            <div className="input-row">
+            <div className="input-row" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input
                 type="text"
                 value={newMessage}
@@ -1583,16 +1579,17 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 }}
                 placeholder="Type a message... (Enter to send)"
                 maxLength={500}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '20px', border: '1px solid #ddd' }}
               />
               <button 
                 onClick={sendChatMessage}
                 disabled={!newMessage.trim()}
                 className="send-btn"
+                style={{ padding: '8px 16px', borderRadius: '20px', backgroundColor: '#007bff', color: 'white', border: 'none', cursor: 'pointer' }}
               >
                 Send
               </button>
             </div>
-
           </div>
         </div>
       )}
