@@ -56,7 +56,10 @@ const PrivacySettings = ({ currentGroup, groupMembers, onClose }) => {
     }
   };
 
-  const membersList = Object.entries(groupMembers).filter(([id]) => id !== user.uid);
+  const membersList = Object.entries(groupMembers || {}).filter(([id]) => id !== user.uid);
+  
+  console.log('Privacy Settings - Group Members:', groupMembers);
+  console.log('Privacy Settings - Members List:', membersList);
 
   return (
     <div className="privacy-settings-overlay">
@@ -97,21 +100,29 @@ const PrivacySettings = ({ currentGroup, groupMembers, onClose }) => {
             <div className="members-selection">
               <h4>Select members to share your location with:</h4>
               <div className="members-list">
-                {membersList.map(([memberId, member]) => (
-                  <label key={memberId} className="member-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedMembers.has(memberId)}
-                      onChange={() => handleMemberToggle(memberId)}
-                    />
-                    <span className="member-name">{member.name || 'Unknown'}</span>
-                    <span className="member-status">
-                      {member.timestamp && (Date.now() - member.timestamp < 60000) ? '🟢' : '🔴'}
-                    </span>
-                  </label>
-                ))}
+                {membersList.length === 0 ? (
+                  <p>No other members in group</p>
+                ) : (
+                  membersList.map(([memberId, member]) => {
+                    console.log('Member data:', memberId, member);
+                    const displayName = member.name || member.email?.split('@')[0] || memberId.substring(0, 8) || 'Unknown';
+                    return (
+                      <label key={memberId} className="member-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedMembers.has(memberId)}
+                          onChange={() => handleMemberToggle(memberId)}
+                        />
+                        <span className="member-name">{displayName}</span>
+                        <span className="member-status">
+                          {member.timestamp && (Date.now() - member.timestamp < 60000) ? '🟢' : '🔴'}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
               </div>
-              {selectedMembers.size === 0 && (
+              {selectedMembers.size === 0 && membersList.length > 0 && (
                 <p className="warning">⚠️ No members selected. Your location won't be visible to anyone.</p>
               )}
             </div>

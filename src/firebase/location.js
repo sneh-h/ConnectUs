@@ -60,7 +60,7 @@ export const sendMessage = (groupId, message) => {
 
 export const subscribeToMessages = (groupId, callback) => {
   const messagesRef = ref(realtimeDb, `groups/${groupId}/messages`);
-  onValue(messagesRef, callback);
+  onValue(messagesRef, callback, { onlyOnce: false });
   return () => off(messagesRef, callback);
 };
 
@@ -80,7 +80,7 @@ export const acknowledgeAlert = (groupId, alertId, userId) => {
 
 export const subscribeToEmergencyAlerts = (groupId, callback) => {
   const emergencyRef = ref(realtimeDb, `groups/${groupId}/emergencies`);
-  onValue(emergencyRef, callback);
+  onValue(emergencyRef, callback, { onlyOnce: false });
   return () => off(emergencyRef, callback);
 };
 
@@ -118,7 +118,7 @@ export const sendMemberRequest = (groupId, request) => {
 
 export const subscribeToMemberRequests = (groupId, callback) => {
   const requestsRef = ref(realtimeDb, `groups/${groupId}/memberRequests`);
-  onValue(requestsRef, callback);
+  onValue(requestsRef, callback, { onlyOnce: false });
   return () => off(requestsRef, callback);
 };
 

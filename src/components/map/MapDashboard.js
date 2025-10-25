@@ -252,8 +252,22 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
         if (snapshot.exists()) {
           const members = snapshot.val();
           
-          // Temporarily disable privacy filtering to fix permission errors
-          setGroupMembers(members);
+          // Apply privacy filtering
+          const filteredMembers = {};
+          for (const [memberId, member] of Object.entries(members)) {
+            if (memberId === user.uid) {
+              // Always show own location
+              filteredMembers[memberId] = member;
+            } else {
+              // Check if this member allows current user to see their location
+              const canView = await canViewLocation(currentGroup, memberId, user.uid);
+              if (canView) {
+                filteredMembers[memberId] = member;
+              }
+            }
+          }
+          
+          setGroupMembers(filteredMembers);
 
           // Update member colors and letters for all members
           const allMembers = { ...members, ...demoUsers };
@@ -517,12 +531,11 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             }
 
             updateUserLocation(user.uid, location);
-            // Update location without changing role
-            updateGroupMemberLocation(currentGroup, user.uid, {
+            // Update location with privacy awareness
+            updateGroupMemberLocationWithPrivacy(currentGroup, user.uid, {
               ...location,
               name: user.email.split('@')[0],
               email: user.email
-              // Don't override role here - preserve existing role
             });
           },
           (error) => console.error('Location error:', error),
