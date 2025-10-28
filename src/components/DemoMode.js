@@ -16,10 +16,10 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, curr
     const base = currentUserLocation || { lat: 19.0760, lng: 72.8777 };
     
     // Add 4 demo users immediately
-    onAddDemoUser({ id: 'demo_0', name: 'Yash', lat: base.lat + 0.002, lng: base.lng + 0.002, battery: 80, timestamp: Date.now(), accuracy: 15 });
-    onAddDemoUser({ id: 'demo_1', name: 'Deepika', lat: base.lat - 0.002, lng: base.lng + 0.002, battery: 75, timestamp: Date.now(), accuracy: 15 });
-    onAddDemoUser({ id: 'demo_2', name: 'Jiya', lat: base.lat + 0.002, lng: base.lng - 0.002, battery: 90, timestamp: Date.now(), accuracy: 15 });
-    onAddDemoUser({ id: 'demo_3', name: 'Apurva', lat: base.lat - 0.003, lng: base.lng - 0.003, battery: 25, timestamp: Date.now(), accuracy: 15 });
+    onAddDemoUser({ id: 'demo_0', name: 'Yash', email: 'yash@demo.com', role: 'member', lat: base.lat + 0.002, lng: base.lng + 0.002, battery: 80, timestamp: Date.now(), accuracy: 15 });
+    onAddDemoUser({ id: 'demo_1', name: 'Deepika', email: 'deepika@demo.com', role: 'member', lat: base.lat - 0.002, lng: base.lng + 0.002, battery: 75, timestamp: Date.now(), accuracy: 15 });
+    onAddDemoUser({ id: 'demo_2', name: 'Jiya', email: 'jiya@demo.com', role: 'member', lat: base.lat + 0.002, lng: base.lng - 0.002, battery: 90, timestamp: Date.now(), accuracy: 15 });
+    onAddDemoUser({ id: 'demo_3', name: 'Apurva', email: 'apurva@demo.com', role: 'member', lat: base.lat - 0.003, lng: base.lng - 0.003, battery: 25, timestamp: Date.now(), accuracy: 15 });
 
     // Force notification permission
     if (Notification.permission === 'default') {
@@ -85,14 +85,14 @@ const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, curr
       moveCount++;
       
       // Move users around me
-      onAddDemoUser({ id: 'demo_0', name: 'Yash', lat: base.lat + 0.002 + Math.sin(moveCount * 0.3) * 0.001, lng: base.lng + 0.002 + Math.cos(moveCount * 0.3) * 0.001, battery: 80, timestamp: Date.now(), accuracy: 15 });
-      onAddDemoUser({ id: 'demo_1', name: 'Deepika', lat: base.lat - 0.002 + Math.sin(moveCount * 0.4) * 0.001, lng: base.lng + 0.002 + Math.cos(moveCount * 0.4) * 0.001, battery: 75, timestamp: Date.now(), accuracy: 15 });
-      onAddDemoUser({ id: 'demo_2', name: 'Jiya', lat: base.lat + 0.002 + Math.sin(moveCount * 0.5) * 0.001, lng: base.lng - 0.002 + Math.cos(moveCount * 0.5) * 0.001, battery: 90, timestamp: Date.now(), accuracy: 15 });
+      onAddDemoUser({ id: 'demo_0', name: 'Yash', email: 'yash@demo.com', role: 'member', lat: base.lat + 0.002 + Math.sin(moveCount * 0.3) * 0.001, lng: base.lng + 0.002 + Math.cos(moveCount * 0.3) * 0.001, battery: 80, timestamp: Date.now(), accuracy: 15 });
+      onAddDemoUser({ id: 'demo_1', name: 'Deepika', email: 'deepika@demo.com', role: 'member', lat: base.lat - 0.002 + Math.sin(moveCount * 0.4) * 0.001, lng: base.lng + 0.002 + Math.cos(moveCount * 0.4) * 0.001, battery: 75, timestamp: Date.now(), accuracy: 15 });
+      onAddDemoUser({ id: 'demo_2', name: 'Jiya', email: 'jiya@demo.com', role: 'member', lat: base.lat + 0.002 + Math.sin(moveCount * 0.5) * 0.001, lng: base.lng - 0.002 + Math.cos(moveCount * 0.5) * 0.001, battery: 90, timestamp: Date.now(), accuracy: 15 });
       
       // Apurva moves away
       const apurvaLat = base.lat - 0.003 - (moveCount * 0.0008);
       const apurvaLng = base.lng - 0.003 - (moveCount * 0.0008);
-      onAddDemoUser({ id: 'demo_3', name: 'Apurva', lat: apurvaLat, lng: apurvaLng, battery: 25, timestamp: Date.now(), accuracy: 15 });
+      onAddDemoUser({ id: 'demo_3', name: 'Apurva', email: 'apurva@demo.com', role: 'member', lat: apurvaLat, lng: apurvaLng, battery: 25, timestamp: Date.now(), accuracy: 15 });
     }, 2000);
 
     return () => clearInterval(interval);

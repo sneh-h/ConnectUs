@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { signIn, signUp, resendVerification } from '../../firebase/auth';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-import { Link } from 'react-router-dom';
+
 import './Login.css';
 
 const Login = () => {
@@ -18,7 +18,7 @@ const Login = () => {
   const [resetSent, setResetSent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [verificationSent, setVerificationSent] = useState(false);
+  const [setVerificationSent] = useState(false);
 
   const updateFormData = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -142,7 +142,6 @@ const Login = () => {
           <h1 className="auth-title">
             Connect<span className="title-accent">Us</span>
           </h1>
-          <p className="auth-subtitle">{isSignUp ? 'JOIN THE NETWORK' : 'ACCESS YOUR TRACKING NETWORK'}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">

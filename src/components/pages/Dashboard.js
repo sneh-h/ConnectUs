@@ -299,7 +299,7 @@ const Dashboard = () => {
 
   if (currentGroup) {
     // Check if user is admin by role OR if user is the group creator
-    const memberRole = groupMembers[user?.uid]?.role;
+    const memberRole = groupMembers[user?.uid]?.role || groupData?.members?.[user?.uid]?.role;
     const isCreator = groupData && (groupData.creator === user?.uid || groupData.creatorEmail === user?.email);
     const isAdmin = memberRole === 'admin' || isCreator;
     

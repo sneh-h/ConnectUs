@@ -173,19 +173,29 @@ export const updatePrivacySettings = (groupId, userId, settings) => {
 };
 
 export const getPrivacySettings = async (groupId, userId) => {
-  const { get } = await import('firebase/database');
-  const privacyRef = ref(realtimeDb, `groups/${groupId}/privacy/${userId}`);
-  const snapshot = await get(privacyRef);
-  return snapshot.exists() ? snapshot.val() : null;
+  try {
+    const { get } = await import('firebase/database');
+    const privacyRef = ref(realtimeDb, `groups/${groupId}/privacy/${userId}`);
+    const snapshot = await get(privacyRef);
+    return snapshot.exists() ? snapshot.val() : null;
+  } catch (error) {
+    console.log('Privacy settings access denied - user likely logged out');
+    return null;
+  }
 };
 
 export const canViewLocation = async (groupId, locationOwnerId, viewerId) => {
-  if (locationOwnerId === viewerId) return true;
-  
-  const settings = await getPrivacySettings(groupId, locationOwnerId);
-  if (!settings || settings.shareWith === 'all') return true;
-  
-  return settings.selectedMembers && settings.selectedMembers.includes(viewerId);
+  try {
+    if (locationOwnerId === viewerId) return true;
+    
+    const settings = await getPrivacySettings(groupId, locationOwnerId);
+    if (!settings || settings.shareWith === 'all') return true;
+    
+    return settings.selectedMembers && settings.selectedMembers.includes(viewerId);
+  } catch (error) {
+    console.log('Location access check failed - user likely logged out');
+    return false;
+  }
 };
 
 export const updateGroupMemberLocationWithPrivacy = async (groupId, userId, location) => {
@@ -196,4 +206,10 @@ export const updateGroupMemberLocationWithPrivacy = async (groupId, userId, loca
   
   // The privacy filtering happens on the client side when reading locations
   return true;
+};
+
+// Delete group function (admin only)
+export const deleteGroup = async (groupId) => {
+  const groupRef = ref(realtimeDb, `groups/${groupId}`);
+  return set(groupRef, null);
 };

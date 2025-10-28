@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const LandingPage = () => {
-  const [particles, setParticles] = useState([]);
 
   useEffect(() => {
     // Create floating particles
@@ -56,7 +55,7 @@ const LandingPage = () => {
           </div>
 
           <p className="hero-subtitle">
-            <span className="highlight">Live Group Tracking</span>that keeps everyone visible, alert, and never out of sight—because the journey's better together.
+            <span className="highlight">Live Group Tracking </span>that keeps everyone visible, alert, and never out of sight—because the journey's better together.
           </p>
           
           <div className="feature-highlights">
@@ -120,7 +119,7 @@ const LandingPage = () => {
           <div className="feature-card">
             <div className="feature-icon">🚨</div>
             <h3>Emergency Alerts</h3>
-            <p>Instant SOS notifications with continuous alerts until acknowledged by all group members</p>
+            <p>Instant notifications with continuous alerts until acknowledged by all group members</p>
           </div>
           
           <div className="feature-card">

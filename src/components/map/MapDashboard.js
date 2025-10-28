@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert, subscribeToMemberRequests, approveMemberRequest, rejectMemberRequest, sendNotification, subscribeToNotifications, updateGroupMemberLocation, canViewLocation, updateGroupMemberLocationWithPrivacy } from '../../firebase/location';
+import { updateUserLocation, subscribeToGroupLocations, sendMessage, subscribeToMessages, sendEmergencyAlert, subscribeToEmergencyAlerts, acknowledgeAlert, subscribeToMemberRequests, approveMemberRequest, rejectMemberRequest, sendNotification, subscribeToNotifications, updateGroupMemberLocation, canViewLocation, updateGroupMemberLocationWithPrivacy, deleteGroup } from '../../firebase/location';
 import { ref, set, get } from 'firebase/database';
 import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
@@ -423,7 +423,8 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                     new Notification('🔋 Low Battery Alert', {
                       body: `${alert.name}'s battery is at ${alert.battery}%. They may lose connection soon.`,
                       icon: '/favicon.ico',
-                      requireInteraction: true
+                      requireInteraction: true,
+                      tag: `low_battery_${alert.userId}` // Prevent duplicate notifications
                     });
                   }
                 }
@@ -490,7 +491,7 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               return newHistory;
             });
 
-            // Check for low battery - only send once
+            // Check for low battery - only send once per session
             if (batteryLevel <= 20 && !lowBatteryAlerts.has(user.uid)) {
               // Show browser notification for low battery
               if (Notification.permission === 'granted') {
@@ -512,6 +513,15 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 acknowledged: {}
               });
               setLowBatteryAlerts(prev => new Set([...prev, user.uid]));
+            }
+            
+            // Reset low battery alert when battery is charged above 30%
+            if (batteryLevel > 30 && lowBatteryAlerts.has(user.uid)) {
+              setLowBatteryAlerts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(user.uid);
+                return newSet;
+              });
             }
 
             setMyLocation(location);
@@ -747,16 +757,25 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       console.log('✅ Stopped interval for:', alertKey);
     }
 
-    // Remove from acknowledged alerts ref
-    acknowledgedAlertsRef.current.delete(alertKey);
+    // Close any active browser notifications with this tag
+    if ('serviceWorker' in navigator && 'getNotifications' in ServiceWorkerRegistration.prototype) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.getNotifications({ tag: alertKey }).then(notifications => {
+          notifications.forEach(notification => notification.close());
+        });
+      });
+    }
 
-    // Remove from UI immediately
+    // Remove from acknowledged alerts ref
+    acknowledgedAlertsRef.current.add(alertKey);
+
+    // Remove from UI immediately for this user
     setEmergencyAlerts(prev => prev.filter(a => a.id !== alertId));
 
-    // Acknowledge in Firebase (background operation)
+    // Acknowledge in Firebase immediately
     try {
       await acknowledgeAlert(currentGroup, alertId, user.uid);
-      console.log('✅ Alert acknowledged in Firebase');
+      console.log('✅ Alert acknowledged in Firebase for user:', user.uid);
     } catch (error) {
       console.error('Error acknowledging alert:', error);
     }
@@ -875,6 +894,26 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
         console.error('Error rejecting request:', error);
         showNotification('❌ Error', 'Failed to reject request');
       }
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    const confirmMessage = `Are you sure you want to delete the group "${groupName || currentGroup}"?\n\nThis will:\n• Remove all ${Object.keys(groupMembers).length} members\n• Delete all location history\n• Delete all messages\n• This action CANNOT be undone\n\nType "DELETE" to confirm:`;
+    
+    const userInput = window.prompt(confirmMessage);
+    
+    if (userInput === 'DELETE') {
+      try {
+        await deleteGroup(currentGroup);
+        showNotification('✓ Group Deleted', 'Group has been permanently deleted');
+        // Navigate back to group selection
+        if (onLeaveGroup) onLeaveGroup();
+      } catch (error) {
+        console.error('Error deleting group:', error);
+        showNotification('❌ Error', 'Failed to delete group');
+      }
+    } else if (userInput !== null) {
+      showNotification('❌ Cancelled', 'Group deletion cancelled - incorrect confirmation');
     }
   };
 
@@ -1051,9 +1090,11 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                   <button onClick={() => { setShowProfile(true); setShowProfileMenu(false); }} className="dropdown-btn profile">
                     👤 Profile Settings
                   </button>
-                  <button onClick={() => { setShowPrivacySettings(true); setShowProfileMenu(false); }} className="dropdown-btn privacy">
-                    🔒 Privacy Settings
-                  </button>
+                  {!isAdmin && (
+                    <button onClick={() => { setShowPrivacySettings(true); setShowProfileMenu(false); }} className="dropdown-btn privacy">
+                      🔒 Privacy Settings
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1188,9 +1229,32 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             {activeTab === 'manage' && (
               <div className="member-management">
                 <div className="management-header">
-                  <h4>👥 Group Members</h4>
-                  <p>Manage group members and their permissions</p>
+                  <h4>👥 Group Management</h4>
+                  <p>Manage group members and settings</p>
                 </div>
+                
+                <div className="admin-actions" style={{ display: 'flex', gap: '8px', marginBottom: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentGroup);
+                      showNotification('📋 Code Copied', `Group code "${currentGroup}" copied`);
+                    }}
+                    className="admin-action-btn"
+                    style={{ padding: '8px 12px', fontSize: '14px', border: '1px solid #007bff', backgroundColor: 'white', color: '#007bff', borderRadius: '4px', cursor: 'pointer' }}
+                    title="Copy group code to share with others"
+                  >
+                    📋 Share Code
+                  </button>
+                  <button
+                    onClick={handleDeleteGroup}
+                    className="admin-action-btn"
+                    style={{ padding: '8px 12px', fontSize: '14px', border: '1px solid #dc3545', backgroundColor: 'white', color: '#dc3545', borderRadius: '4px', cursor: 'pointer' }}
+                    title="Permanently delete this group"
+                  >
+                    🗑️ Delete Group
+                  </button>
+                </div>
+
                 <div className="member-list">
                   {Object.entries(groupMembers).length === 0 ? (
                     <div className="no-members">
@@ -1220,6 +1284,8 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 </div>
               </div>
             )}
+
+
           </div>
         </div>
       )}
@@ -1405,24 +1471,153 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
 
 
 
-          {/* Simple Members Panel */}
-          <SimpleMembersPanel
-            members={{ ...groupMembers, ...demoUsers }}
-            currentUser={{ uid: user.uid, role: isAdmin ? 'admin' : 'member', ...myLocation }}
-            currentGroup={currentGroup}
-            mapRef={mapRef}
-            memberAddresses={memberAddresses}
-            myAddress={myAddress}
-            onMemberClick={(userId, member) => {
-              console.log('Member clicked:', member.name || member.email);
-              setSelectedMember(userId);
-            }}
-            onSendMessage={(userId, memberName) => {
-              console.log('Send message to:', memberName);
-              setShowChat(true);
-              setNewMessage(`@${memberName} `);
-            }}
-          />
+          {/* Members Cards */}
+          <div className="members-section">
+            <h3>👥 Group Members ({Object.keys({ ...groupMembers, ...demoUsers }).length})</h3>
+            
+            <div className="group-stats">
+              <div className="stat-box">
+                <div className="stat-label">Total</div>
+                <div className="stat-value">{Object.keys({ ...groupMembers, ...demoUsers }).length}</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-label">Online</div>
+                <div className="stat-value">{Object.values({ ...groupMembers, ...demoUsers }).filter(m => m.timestamp && (Date.now() - m.timestamp < 60000)).length}</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-label">Offline</div>
+                <div className="stat-value">{Object.keys({ ...groupMembers, ...demoUsers }).length - Object.values({ ...groupMembers, ...demoUsers }).filter(m => m.timestamp && (Date.now() - m.timestamp < 60000)).length}</div>
+              </div>
+            </div>
+
+            <div className="members-section-title">Active Members</div>
+
+            <div className="members-cards">
+              {Object.entries({ ...groupMembers, ...demoUsers }).map(([userId, member], index) => {
+                const memberGradients = [
+                  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                  'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+                  'linear-gradient(135deg, #ffa400 0%, #ff6b6b 100%)',
+                  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                  'linear-gradient(135deg, #30cfd0 0%, #91a7ff 100%)',
+                  'linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)',
+                  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
+                  'linear-gradient(135deg, #fdbb2d 0%, #22c1c3 100%)',
+                  'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
+                ];
+                
+                const isCurrentUser = userId === user.uid;
+                const isOnline = member.timestamp && (Date.now() - member.timestamp < 60000);
+                const memberGradient = memberGradients[index % memberGradients.length];
+                const initials = memberLetters[userId] || (member.name || member.email?.split('@')[0] || 'U').substring(0, 2).toUpperCase();
+                
+                const getOnlineStatus = (member) => {
+                  if (!member.timestamp) return { status: 'never', color: '#666', text: 'Never seen' };
+                  
+                  const timeDiff = Date.now() - member.timestamp;
+                  const minutes = Math.floor(timeDiff / 60000);
+                  
+                  if (minutes < 1) return { status: 'active', color: '#00ff88', text: 'Active now' };
+                  if (minutes < 5) return { status: 'recent', color: '#4ecdc4', text: 'Just left' };
+                  if (minutes < 60) return { status: 'offline', color: '#ffa500', text: `${minutes}m ago` };
+                  
+                  const hours = Math.floor(minutes / 60);
+                  if (hours < 24) return { status: 'away', color: '#ff6b6b', text: `${hours}h ago` };
+                  
+                  return { status: 'inactive', color: '#666', text: `${Math.floor(hours / 24)}d ago` };
+                };
+                
+                const getDistance = (member) => {
+                  if (!member?.lat || !member?.lng || !myLocation?.lat || !myLocation?.lng) return null;
+                  
+                  const R = 6371;
+                  const dLat = (member.lat - myLocation.lat) * Math.PI / 180;
+                  const dLon = (member.lng - myLocation.lng) * Math.PI / 180;
+                  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                            Math.cos(myLocation.lat * Math.PI / 180) * Math.cos(member.lat * Math.PI / 180) *
+                            Math.sin(dLon/2) * Math.sin(dLon/2);
+                  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                  const distance = R * c;
+                  
+                  if (distance < 1) return `${Math.round(distance * 1000)}m`;
+                  return `${distance.toFixed(1)} km`;
+                };
+                
+                const status = getOnlineStatus(member);
+                const distance = getDistance(member);
+                const battery = member.battery || 85;
+                
+                return (
+                  <div 
+                    key={userId} 
+                    className={`member-item ${isCurrentUser ? 'active' : ''} ${status.status}`}
+                    onClick={() => {
+                      if (member.lat && member.lng && mapRef?.current) {
+                        mapRef.current.setView([member.lat, member.lng], 16);
+                      }
+                    }}
+                  >
+                    <div className="member-header">
+                      <div 
+                        className="member-avatar"
+                        style={{ background: memberGradient }}
+                      >
+                        {initials}
+                      </div>
+                      <div className="member-info">
+                        <div className="member-name">
+                          {member.name || member.email?.split('@')[0] || 'Unknown'}
+                          {member.role === 'admin' && (
+                            <span className="admin-badge" title="Group Admin">
+                              👑
+                            </span>
+                          )}
+                        </div>
+                        <div className="member-status">
+                          <span 
+                            className="status-dot" 
+                            style={{ backgroundColor: status.color }}
+                          ></span>
+                          <span 
+                            className="status-text"
+                            style={{ color: status.color }}
+                          >
+                            {status.text}
+                          </span>
+                          {(member.lat && member.lng) && (
+                            <span className="location-indicator" title="Location shared">
+                              📍
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="member-details">
+                      <div className="member-distance">
+                        {isCurrentUser ? '📍 You' : 
+                         distance ? `📍 ${distance}` : 
+                         '📍 No location'}
+                      </div>
+                      <div className="member-actions">
+                        <div className="member-battery">
+                          <div className="battery-visual">
+                            <div 
+                              className={`battery-fill ${battery < 30 ? 'low' : battery < 70 ? 'mid' : ''}`}
+                              style={{ width: `${battery}%` }}
+                            ></div>
+                          </div>
+                          {battery}%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           {/* My Status */}
           <div className="status-panel">

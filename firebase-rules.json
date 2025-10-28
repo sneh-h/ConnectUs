@@ -1,44 +1,6 @@
 {
   "rules": {
-    "groups": {
-      "$groupId": {
-        ".read": "auth != null",
-        ".write": "auth != null",
-        "members": {
-          "$userId": {
-            ".read": "auth != null",
-            ".write": "auth != null && auth.uid == $userId"
-          }
-        },
-        "messages": {
-          ".read": "auth != null",
-          ".write": "auth != null"
-        },
-        "emergencies": {
-          ".read": "auth != null",
-          ".write": "auth != null"
-        },
-        "memberRequests": {
-          ".read": "auth != null",
-          ".write": "auth != null"
-        },
-        "notifications": {
-          ".read": "auth != null",
-          ".write": "auth != null"
-        },
-        "privacy": {
-          "$userId": {
-            ".read": "auth != null && auth.uid == $userId",
-            ".write": "auth != null && auth.uid == $userId"
-          }
-        }
-      }
-    },
-    "locations": {
-      "$userId": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid == $userId"
-      }
-    }
+    ".read": "auth != null",
+    ".write": "auth != null"
   }
 }

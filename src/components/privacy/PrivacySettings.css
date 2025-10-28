@@ -103,17 +103,34 @@
 .member-checkbox {
   display: flex;
   align-items: center;
-  padding: 8px 0;
+  padding: 12px 8px;
   cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  border: 1px solid transparent;
+}
+
+.member-checkbox:hover {
+  background-color: #080808;
+  border-color: #007bff;
 }
 
 .member-checkbox input[type="checkbox"] {
-  margin-right: 10px;
+  margin-right: 12px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .member-name {
   flex: 1;
-  color: #333;
+  color: #000;
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .member-status {

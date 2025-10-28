@@ -101,11 +101,12 @@ const PrivacySettings = ({ currentGroup, groupMembers, onClose }) => {
               <h4>Select members to share your location with:</h4>
               <div className="members-list">
                 {membersList.length === 0 ? (
-                  <p>No other members in group</p>
+                  <p style={{ color: '#666', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>No other members in group</p>
                 ) : (
                   membersList.map(([memberId, member]) => {
                     console.log('Member data:', memberId, member);
-                    const displayName = member.name || member.email?.split('@')[0] || memberId.substring(0, 8) || 'Unknown';
+                    const displayName = member.name || member.email?.split('@')[0] || `User ${memberId.substring(0, 8)}` || 'Unknown Member';
+                    const isOnline = member.timestamp && (Date.now() - member.timestamp < 60000);
                     return (
                       <label key={memberId} className="member-checkbox">
                         <input
@@ -114,8 +115,8 @@ const PrivacySettings = ({ currentGroup, groupMembers, onClose }) => {
                           onChange={() => handleMemberToggle(memberId)}
                         />
                         <span className="member-name">{displayName}</span>
-                        <span className="member-status">
-                          {member.timestamp && (Date.now() - member.timestamp < 60000) ? '🟢' : '🔴'}
+                        <span className="member-status" title={isOnline ? 'Online' : 'Offline'}>
+                          {isOnline ? '🟢 Online' : '🔴 Offline'}
                         </span>
                       </label>
                     );
