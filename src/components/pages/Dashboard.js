@@ -25,7 +25,6 @@ const Dashboard = () => {
   const [expandedCard, setExpandedCard] = useState(null);
   const [showJoinRequest, setShowJoinRequest] = useState(false);
   const [groupData, setGroupData] = useState(null);
-  const [pendingRequests, setPendingRequests] = useState([]);
 
   // Load user's existing groups and current group on component mount
   useEffect(() => {

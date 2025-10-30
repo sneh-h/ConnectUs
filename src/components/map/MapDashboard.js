@@ -6,8 +6,7 @@ import { ref, set, get } from 'firebase/database';
 import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
-import SimpleMembersPanel from '../panels/SimpleMembersPanel';
-import DemoMode from '../DemoMode';
+import DemoMode from '../utils/DemoMode';
 import UserProfile from '../profile/UserProfile';
 import PrivacySettings from '../privacy/PrivacySettings';
 import './MapDashboard.css';
@@ -72,11 +71,9 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [memberLetters, setMemberLetters] = useState({});
   const [myAddress, setMyAddress] = useState('');
   const [memberAddresses, setMemberAddresses] = useState({});
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [showEnhancedMembers, setShowEnhancedMembers] = useState(true);
+  const [searchTerm] = useState('');
   const [demoUsers, setDemoUsers] = useState({});
-  const [adminSettings, setAdminSettings] = useState({
+  const [adminSettings] = useState({
     laggingAlerts: true,
     realNotifications: true,
     allowMemberAdditions: true
@@ -88,29 +85,22 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
   const [distanceValue, setDistanceValue] = useState(500);
   const [distanceUnit, setDistanceUnit] = useState('m');
   const [activeNotifications, setActiveNotifications] = useState([]);
-  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState(new Set());
   const [notifiedRequests, setNotifiedRequests] = useState(new Set());
   const [notifiedApprovals, setNotifiedApprovals] = useState(new Set());
-  const [notifiedAcknowledgments, setNotifiedAcknowledgments] = useState(new Set());
   const [emergencyIntervals, setEmergencyIntervals] = useState({});
   const [locationHistory, setLocationHistory] = useState([]);
   const [batteryLevel, setBatteryLevel] = useState(100);
-  const [chatNotification, setChatNotification] = useState(null);
-  const [activeEmergencyAlerts, setActiveEmergencyAlerts] = useState(new Set());
   const [lowBatteryAlerts, setLowBatteryAlerts] = useState(new Set());
-  const [showMemberManagement, setShowMemberManagement] = useState(false);
   const [followMode, setFollowMode] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showPrivacySettings, setShowPrivacySettings] = useState(false);
-  const [filteredGroupMembers, setFilteredGroupMembers] = useState({});
   const mapRef = useRef(null);
   const watchIdRef = useRef(null);
   const chatMessagesRef = useRef(null);
   const emergencyAlertsRef = useRef([]);
   const emergencyIntervalsRef = useRef({});
   const notificationActiveRef = useRef(false);
-  const stopAllNotificationsRef = useRef(false);
   const chatNotificationRef = useRef(null);
   const acknowledgedAlertsRef = useRef(new Set());
   const lastSeenMessageRef = useRef(Date.now());
@@ -216,11 +206,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
       console.error('Geocoding error:', error);
     }
     return '';
-  };
-
-  const mapContainerStyle = {
-    width: '100%',
-    height: '500px'
   };
 
   useEffect(() => {
@@ -1311,8 +1296,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               🎯
             </button>
 
-
-
             <button
               onClick={() => {
                 if (mapRef.current) {
@@ -1332,8 +1315,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             >
               👥
             </button>
-
-
           </div>
 
           <MapContainer
@@ -1467,10 +1448,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
             currentUserLocation={myLocation}
           />
 
-
-
-
-
           {/* Members Cards */}
           <div className="members-section">
             <h3>👥 Group Members ({Object.keys({ ...groupMembers, ...demoUsers }).length})</h3>
@@ -1510,7 +1487,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
                 ];
                 
                 const isCurrentUser = userId === user.uid;
-                const isOnline = member.timestamp && (Date.now() - member.timestamp < 60000);
                 const memberGradient = memberGradients[index % memberGradients.length];
                 const initials = memberLetters[userId] || (member.name || member.email?.split('@')[0] || 'U').substring(0, 2).toUpperCase();
                 
@@ -1727,10 +1703,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               })}
             </div>
           )}
-
-
-
-
         </div>
       </div>
 
