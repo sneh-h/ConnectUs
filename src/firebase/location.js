@@ -66,12 +66,12 @@ export const subscribeToMessages = (groupId, callback) => {
 
 // Emergency functions
 export const sendEmergencyAlert = (groupId, alert) => {
-  const emergencyRef = ref(realtimeDb, `groups/${groupId}/emergencies`);
+  const emergencyRef = ref(realtimeDb, `groups/${groupId}/emergencyAlerts`);
   return push(emergencyRef, alert);
 };
 
 export const acknowledgeAlert = (groupId, alertId, userId) => {
-  const ackRef = ref(realtimeDb, `groups/${groupId}/emergencies/${alertId}/acknowledged/${userId}`);
+  const ackRef = ref(realtimeDb, `groups/${groupId}/emergencyAlerts/${alertId}/acknowledged/${userId}`);
   return set(ackRef, {
     userId,
     timestamp: Date.now()
@@ -79,7 +79,7 @@ export const acknowledgeAlert = (groupId, alertId, userId) => {
 };
 
 export const subscribeToEmergencyAlerts = (groupId, callback) => {
-  const emergencyRef = ref(realtimeDb, `groups/${groupId}/emergencies`);
+  const emergencyRef = ref(realtimeDb, `groups/${groupId}/emergencyAlerts`);
   onValue(emergencyRef, callback, { onlyOnce: false });
   return () => off(emergencyRef, callback);
 };
