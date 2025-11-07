@@ -902,8 +902,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
     }
   };
 
-
-
   // Request notification permission and get battery level
   useEffect(() => {
     if (Notification.permission === 'default') {
@@ -1046,14 +1044,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
               <span className="chat-badge">{unreadMessages}</span>
             )}
           </button>
-
-
-
-
-
-
-
-
 
           <div className="profile-menu-container">
             <button
@@ -1801,7 +1791,6 @@ const MapDashboard = ({ currentGroup: initialGroup, onLeaveGroup, isAdmin = fals
           onClose={() => setShowPrivacySettings(false)}
         />
       )}
-
 
     </div>
   );

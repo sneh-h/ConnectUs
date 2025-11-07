@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { sendMemberRequest, getGroupIdByCode } from '../../firebase/location';
 import { useAuth } from '../../contexts/AuthContext';
 import './JoinGroup.css';

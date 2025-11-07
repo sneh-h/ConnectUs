@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { updateUserLocation, subscribeToGroupLocations, joinGroup, createGroup, getGroupIdByCode } from '../../firebase/location';
 import { realtimeDb } from '../../firebase/config';
 import { logout } from '../../firebase/auth';
@@ -175,10 +175,6 @@ const Dashboard = () => {
     localStorage.setItem('isTracking', 'true');
   };
 
-
-
-
-
   const generateGroupCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
@@ -334,8 +330,6 @@ const Dashboard = () => {
             <p className="page-subtitle">Ready for your next adventure? Choose your path below</p>
           </div>
 
-
-
           <div className={`options-container ${expandedCard ? 'has-expanded' : ''}`}>
             <div className={`option-card join-card ${expandedCard === 'join' ? 'expanded' : expandedCard ? 'blurred' : ''}`}>
               <div className="card-header">
@@ -344,9 +338,7 @@ const Dashboard = () => {
               </div>
               <h3>Join Adventure</h3>
               <p>Connect with friends who are already tracking</p>
-              
-
-              
+            
               <div className="input-section">
                 <label className="input-label">Group Code</label>
                 <div className="enhanced-input">
@@ -394,11 +386,7 @@ const Dashboard = () => {
                 <span className="btn-icon">🚀</span>
                 Send Join Request
               </button>
-              
-
             </div>
-
-
 
             {!loadingGroups && userGroups.length > 0 && (
               <div className={`option-card my-groups-card ${expandedCard === 'groups' ? 'expanded' : expandedCard ? 'blurred' : ''}`}>

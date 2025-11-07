@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import './utils/DemoMode.css';
+import { useState, useEffect } from 'react';
+import './DemoMode.css';
 
 const DemoMode = ({ onAddDemoUser, onRemoveDemoUser, onTriggerLaggingAlert, currentUserLocation }) => {
   const [isEnabled, setIsEnabled] = useState(false);
